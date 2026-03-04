@@ -720,7 +720,8 @@ class MotorsBus(abc.ABC):
         pass
 
     def record_ranges_of_motion(
-        self, motors: NameOrID | list[NameOrID] | None = None, display_values: bool = True
+        self, motors: NameOrID | list[NameOrID] | None = None, display_values: bool = True,
+        use_sequential_read: bool = False
     ) -> tuple[dict[NameOrID, Value], dict[NameOrID, Value]]:
         """Interactively record the min/max encoder values of each motor.
 
@@ -731,6 +732,8 @@ class MotorsBus(abc.ABC):
             motors (NameOrID | list[NameOrID] | None, optional): Motors to record.
                 Defaults to every motor (`None`).
             display_values (bool, optional): When `True` (default) a live table is printed to the console.
+            use_sequential_read (bool, optional): When `True`, use sequential read instead of sync read.
+                This is slower but more reliable if sync read has issues. Defaults to `False`.
 
         Returns:
             tuple[dict[NameOrID, Value], dict[NameOrID, Value]]: Two dictionaries *mins* and *maxes* with the
@@ -743,18 +746,51 @@ class MotorsBus(abc.ABC):
         elif not isinstance(motors, list):
             raise TypeError(motors)
 
-        start_positions = self.sync_read("Present_Position", motors, normalize=False)
+        def read_positions(use_sync: bool) -> dict:
+            """Read positions from all motors using either sync or sequential read."""
+            if use_sync:
+                return self.sync_read("Present_Position", motors, normalize=False)
+            else:
+                # Fallback to sequential read
+                positions = {}
+                for motor in motors:
+                    positions[motor] = self.read("Present_Position", motor, normalize=False)
+                return positions
+
+        start_positions = read_positions(not use_sequential_read)
         mins = start_positions.copy()
         maxes = start_positions.copy()
 
+        # Track if we need to switch to sequential read
+        use_sync = not use_sequential_read
+        consecutive_same_values = 0
+        last_positions = start_positions.copy()
+
         user_pressed_enter = False
         while not user_pressed_enter:
-            positions = self.sync_read("Present_Position", motors, normalize=False)
+            positions = read_positions(use_sync)
+
+            # Check if all positions are the same as last time (potential sync read bug)
+            if use_sync:
+                all_same = all(positions[m] == last_positions[m] for m in motors)
+                if all_same:
+                    consecutive_same_values += 1
+                    if consecutive_same_values >= 10:
+                        print("\nWarning: Sync read may be returning stale data.")
+                        print("Switching to sequential read mode for reliability.")
+                        use_sync = False
+                        use_sequential_read = True
+                        consecutive_same_values = 0
+                else:
+                    consecutive_same_values = 0
+            last_positions = positions.copy()
+
             mins = {motor: min(positions[motor], min_) for motor, min_ in mins.items()}
             maxes = {motor: max(positions[motor], max_) for motor, max_ in maxes.items()}
 
             if display_values:
-                print("\n-------------------------------------------")
+                mode = "SYNC" if use_sync else "SEQ"
+                print(f"\n------------------------------------------- [{mode}]")
                 print(f"{'NAME':<15} | {'MIN':>6} | {'POS':>6} | {'MAX':>6}")
                 for motor in motors:
                     print(f"{motor:<15} | {mins[motor]:>6} | {positions[motor]:>6} | {maxes[motor]:>6}")
@@ -880,7 +916,7 @@ class MotorsBus(abc.ABC):
         """
         id_ = self._get_motor_id(motor)
         for n_try in range(1 + num_retry):
-            model_number, comm, error = self.packet_handler.ping(self.port_handler, id_)
+            model_number, comm, error = self.packet_handler.ping(id_)
             if self._is_comm_success(comm):
                 break
             logger.debug(f"ping failed for {id_=}: {n_try=} got {comm=} {error=}")
@@ -971,7 +1007,7 @@ class MotorsBus(abc.ABC):
             raise ValueError(length)
 
         for n_try in range(1 + num_retry):
-            value, comm, error = read_fn(self.port_handler, motor_id, address)
+            value, comm, error = read_fn(motor_id, address)
             if self._is_comm_success(comm):
                 break
             logger.debug(
@@ -1034,7 +1070,7 @@ class MotorsBus(abc.ABC):
     ) -> tuple[int, int]:
         data = self._serialize_data(value, length)
         for n_try in range(1 + num_retry):
-            comm, error = self.packet_handler.writeTxRx(self.port_handler, motor_id, addr, length, data)
+            comm, error = self.packet_handler.writeTxRx(motor_id, addr, length, data)
             if self._is_comm_success(comm):
                 break
             logger.debug(
@@ -1120,7 +1156,21 @@ class MotorsBus(abc.ABC):
         if not self._is_comm_success(comm) and raise_on_error:
             raise ConnectionError(f"{err_msg} {self.packet_handler.getTxRxResult(comm)}")
 
-        values = {id_: self.sync_reader.getData(id_, addr, length) for id_ in motor_ids}
+        # Check data availability before calling getData to avoid IndexError
+        values = {}
+        for id_ in motor_ids:
+            available, _ = self.sync_reader.isAvailable(id_, addr, length)
+            if not available:
+                if raise_on_error:
+                    raise ConnectionError(
+                        f"Data not available for motor {id_} after sync read. "
+                        f"This may indicate a communication issue or SDK bug."
+                    )
+                values[id_] = 0
+            else:
+                values[id_] = self.sync_reader.getData(id_, addr, length)
+        # Debug: log raw values read from motors
+        logger.debug(f"Sync read raw values: {values}")
         return values, comm
 
     def _setup_sync_reader(self, motor_ids: list[int], addr: int, length: int) -> None:
@@ -1129,6 +1179,11 @@ class MotorsBus(abc.ABC):
         self.sync_reader.data_length = length
         for id_ in motor_ids:
             self.sync_reader.addParam(id_)
+        # Debug: log sync reader setup
+        logger.debug(
+            f"Setup sync reader: addr={addr}, length={length}, "
+            f"motor_ids={motor_ids}, data_dict_keys={list(self.sync_reader.data_dict.keys())}"
+        )
 
     # TODO(aliberts, pkooij): Implementing something like this could get even much faster read times if need be.
     # Would have to handle the logic of checking if a packet has been sent previously though but doable.

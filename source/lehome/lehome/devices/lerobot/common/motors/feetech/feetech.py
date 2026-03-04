@@ -66,18 +66,29 @@ class TorqueMode(Enum):
 
 
 def _split_into_byte_chunks(value: int, length: int) -> list[int]:
-    import scservo_sdk as scs
+    # Helper functions for byte manipulation (equivalent to scservo_sdk functions)
+    def scs_lobyte(w: int) -> int:
+        return w & 0xFF
+
+    def scs_hibyte(w: int) -> int:
+        return (w >> 8) & 0xFF
+
+    def scs_loword(l: int) -> int:
+        return l & 0xFFFF
+
+    def scs_hiword(h: int) -> int:
+        return (h >> 16) & 0xFFFF
 
     if length == 1:
         data = [value]
     elif length == 2:
-        data = [scs.SCS_LOBYTE(value), scs.SCS_HIBYTE(value)]
+        data = [scs_lobyte(value), scs_hibyte(value)]
     elif length == 4:
         data = [
-            scs.SCS_LOBYTE(scs.SCS_LOWORD(value)),
-            scs.SCS_HIBYTE(scs.SCS_LOWORD(value)),
-            scs.SCS_LOBYTE(scs.SCS_HIWORD(value)),
-            scs.SCS_HIBYTE(scs.SCS_HIWORD(value)),
+            scs_lobyte(scs_loword(value)),
+            scs_hibyte(scs_loword(value)),
+            scs_lobyte(scs_hiword(value)),
+            scs_hibyte(scs_hiword(value)),
         ]
     return data
 
@@ -129,9 +140,9 @@ class FeetechMotorsBus(MotorsBus):
         self.port_handler.setPacketTimeout = patch_setPacketTimeout.__get__(
             self.port_handler, scs.PortHandler
         )
-        self.packet_handler = scs.PacketHandler(protocol_version)
-        self.sync_reader = scs.GroupSyncRead(self.port_handler, self.packet_handler, 0, 0)
-        self.sync_writer = scs.GroupSyncWrite(self.port_handler, self.packet_handler, 0, 0)
+        self.packet_handler = scs.protocol_packet_handler(self.port_handler, protocol_version)
+        self.sync_reader = scs.GroupSyncRead(self.packet_handler, 0, 0)
+        self.sync_writer = scs.GroupSyncWrite(self.packet_handler, 0, 0)
         self._comm_success = scs.COMM_SUCCESS
         self._no_error = 0x00
 
@@ -348,7 +359,7 @@ class FeetechMotorsBus(MotorsBus):
         txpacket[scs.PKT_LENGTH] = 2
         txpacket[scs.PKT_INSTRUCTION] = scs.INST_PING
 
-        result = self.packet_handler.txPacket(self.port_handler, txpacket)
+        result = self.packet_handler.txPacket(txpacket)
         if result != scs.COMM_SUCCESS:
             self.port_handler.is_using = False
             return data_list, result

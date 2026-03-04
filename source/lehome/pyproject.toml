@@ -1,3 +1,13 @@
 [build-system]
 requires = ["setuptools", "wheel", "toml"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "lehome"
+version = "0.1.0"
+description = "LeHome extension for Isaac Lab"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "psutil",
+]

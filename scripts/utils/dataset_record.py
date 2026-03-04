@@ -31,6 +31,57 @@ from .common import stabilize_garment_after_reset
 
 logger = get_logger(__name__)
 
+# Shared state file for external monitoring
+FOLLOWER_STATE_FILE = "/tmp/lehome_follower_state.json"
+
+
+def write_follower_state(env: DirectRLEnv, is_bi_arm: bool = True, teleop_interface: Any = None) -> None:
+    """Write follower and leader joint positions to shared file for external monitoring.
+
+    Args:
+        env: Environment instance containing robot(s).
+        is_bi_arm: Whether this is a bi-arm configuration.
+        teleop_interface: Teleoperation interface (used to read cached leader state).
+    """
+    import json
+    import os
+
+    try:
+        state = {"timestamp": time.time()}
+
+        if is_bi_arm:
+            # Bi-arm configuration
+            if hasattr(env, "left_arm") and hasattr(env, "right_arm"):
+                left_joints = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]
+                state["left_arm"] = {}
+                state["right_arm"] = {}
+                for i, name in enumerate(left_joints):
+                    state["left_arm"][name] = float(env.left_arm.data.joint_pos[0, i].cpu().numpy())
+                    state["right_arm"][name] = float(env.right_arm.data.joint_pos[0, i].cpu().numpy())
+        else:
+            # Single arm configuration
+            if hasattr(env, "robot"):
+                joint_names = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]
+                state["arm"] = {}
+                for i, name in enumerate(joint_names):
+                    state["arm"][name] = float(env.robot.data.joint_pos[0, i].cpu().numpy())
+
+        # Write cached leader state if available
+        if teleop_interface is not None and hasattr(teleop_interface, "_last_leader_action"):
+            leader_action = teleop_interface._last_leader_action
+            if leader_action.get("bi_so101_leader"):
+                js = leader_action.get("joint_state", {})
+                state["leader_left_arm"] = {k: float(v) for k, v in js.get("left_arm", {}).items()}
+                state["leader_right_arm"] = {k: float(v) for k, v in js.get("right_arm", {}).items()}
+            elif leader_action.get("so101_leader"):
+                js = leader_action.get("joint_state", {})
+                state["leader_arm"] = {k: float(v) for k, v in js.items()}
+
+        with open(FOLLOWER_STATE_FILE, "w") as f:
+            json.dump(state, f)
+    except Exception as e:
+        pass  # Silently ignore errors to not affect simulation
+
 
 def validate_task_and_device(args: argparse.Namespace) -> None:
     """Validate that task name matches the teleop device configuration.
@@ -358,9 +409,11 @@ def run_idle_phase(
             )
         env.step(maintain_action)
         env.render()
+        write_follower_state(env, is_bi_arm="Bi" in args.task, teleop_interface=teleop_interface)
     else:
         env.step(actions)
         object_initial_pose = env.get_all_pose()
+        write_follower_state(env, is_bi_arm="Bi" in args.task, teleop_interface=teleop_interface)
 
     if object_initial_pose is None:
         object_initial_pose = env.get_all_pose()
@@ -437,6 +490,9 @@ def run_recording_phase(
                 env.render()
             else:
                 env.step(actions)
+
+            # Write follower state for external monitoring
+            write_follower_state(env, is_bi_arm=is_bi_arm, teleop_interface=teleop_interface)
 
             if args.log_success:
                 success = env._get_success()
@@ -616,8 +672,10 @@ def run_live_control_without_record(
             )
         env.step(maintain_action)
         env.render()
+        write_follower_state(env, is_bi_arm="Bi" in args.task, teleop_interface=teleop_interface)
     else:
         env.step(actions)
+        write_follower_state(env, is_bi_arm="Bi" in args.task, teleop_interface=teleop_interface)
 
     if args.log_success:
         _ = env._get_success()

@@ -1,28 +1,47 @@
 [project]
-name = "lehome"
+name = "lehome-project"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
+    "lehome",
     "isaacsim[all,extscache]==5.1.0",
+    "isaaclab",
+    "isaaclab_assets",
+    "isaaclab_mimic",
+    "isaaclab_rl",
+    "isaaclab_tasks",
     "lerobot==0.4.3",
     "num2words>=0.5.14",
     "open3d>=0.19.0",
     "pinocchio>=0.4.3",
+    "ftservo-python-sdk",
     "torch==2.7.0",
     "torchvision==0.22.0",
     "transformers>=4.57.6",
     "transforms3d>=0.4.2",
 ]
+
 [tool.uv]
 required-environments = [
     "sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 override-dependencies = [
-    "packaging==23.0",
+    "packaging>=24.2",
     "numpy==1.26.0",
 ]
+
+[tool.uv.sources]
+lehome = { path = "source/lehome", editable = true }
+isaaclab = { path = "third_party/IsaacLab/source/isaaclab", editable = true }
+isaaclab_assets = { path = "third_party/IsaacLab/source/isaaclab_assets", editable = true }
+isaaclab_mimic = { path = "third_party/IsaacLab/source/isaaclab_mimic", editable = true }
+isaaclab_rl = { path = "third_party/IsaacLab/source/isaaclab_rl", editable = true }
+isaaclab_tasks = { path = "third_party/IsaacLab/source/isaaclab_tasks", editable = true }
+
+[tool.uv.extra-build-dependencies]
+flatdict = ["setuptools>=40.8.0"]
 
 [[tool.uv.index]]
 name = "nvidia"
@@ -35,4 +54,3 @@ url = "https://pypi.org/simple"
 [[tool.uv.index]]
 name = "pytorch"
 url = "https://download.pytorch.org/whl/cu128"
-

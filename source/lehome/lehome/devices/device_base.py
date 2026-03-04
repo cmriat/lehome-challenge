@@ -84,6 +84,10 @@ class Device(DeviceBase):
             return None
         if action["reset"]:
             return action
+
+        # Cache raw leader state for external monitoring
+        self._last_leader_action = action
+
         for key, value in action.items():
             if isinstance(value, np.ndarray):
                 action[key] = torch.tensor(
