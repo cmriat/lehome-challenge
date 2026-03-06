@@ -73,3 +73,5 @@ tests/
 .isaac-lab-docker-history
 
 .*
+
+log*

@@ -8,8 +8,9 @@
 
 - [第一部分：环境配置](#第一部分环境配置)
   - [1.1 系统要求](#11-系统要求)
-  - [1.2 方式一：UV 安装（推荐本地开发）](#12-方式一uv-安装推荐本地开发)
-  - [1.3 方式二：Docker 安装（推荐服务器/无头环境）](#13-方式二docker-安装推荐服务器无头环境)
+  - [1.2 方式一：Pixi 安装（推荐）](#12-方式一pixi-安装推荐)
+  - [1.3 方式二：UV 安装](#13-方式二uv-安装)
+  - [1.4 方式三：Docker 安装（推荐服务器/无头环境）](#14-方式三docker-安装推荐服务器无头环境)
 - [第二部分：下载官方数据](#第二部分下载官方数据)
 - [第三部分：自行仿真收集数据](#第三部分自行仿真收集数据)
   - [3.1 硬件准备（可选）](#31-硬件准备可选)
@@ -43,7 +44,70 @@
 
 > ⚠️ **重要**：仿真环境当前仅支持 CPU 运行
 
-### 1.2 方式一：UV 安装（推荐本地开发）
+### 1.2 方式一：Pixi 安装（推荐）
+
+[Pixi](https://pixi.sh/) 是一个现代化的包管理工具，可以一步完成 Python 环境和所有依赖的安装。
+
+#### 步骤 1：安装 Pixi
+
+```bash
+curl -fsSL https://pixi.sh/install.sh | sh
+source ~/.bashrc  # 或重启终端
+```
+
+#### 步骤 2：克隆项目
+
+```bash
+git clone https://github.com/lehome-official/lehome-challenge.git
+cd lehome-challenge
+```
+
+#### 步骤 3：克隆 IsaacLab
+
+```bash
+cd third_party
+git clone https://github.com/lehome-official/IsaacLab.git
+cd ..
+```
+
+#### 步骤 4：安装所有依赖
+
+```bash
+pixi install
+```
+
+> 此命令会自动安装 Python 3.11、Isaac Sim、Isaac Lab、LeHome 及所有依赖，无需其他操作。
+
+#### 步骤 5：安装系统依赖（服务器环境必装）
+
+```bash
+sudo apt update
+sudo apt install -y \
+    libglu1-mesa libgl1 libegl1 \
+    libxrandr2 libxinerama1 libxcursor1 \
+    libxi6 libxext6 libx11-6
+
+# 设置 NVIDIA 渲染
+echo 'export __GLX_VENDOR_LIBRARY_NAME=nvidia' >> ~/.bashrc
+source ~/.bashrc
+```
+
+#### 运行命令
+
+Pixi 环境下运行命令有两种方式：
+
+```bash
+# 方式 A：使用 pixi run 直接执行
+pixi run python -m scripts.eval ...
+
+# 方式 B：进入 pixi shell 后正常执行
+pixi shell
+python -m scripts.eval ...
+```
+
+> 后续章节中的 `source .venv/bin/activate` 可替换为 `pixi shell`，所有 `python` 命令可用 `pixi run python` 替代。
+
+### 1.3 方式二：UV 安装
 
 #### 步骤 1：安装 UV 包管理器
 
@@ -100,7 +164,7 @@ echo 'export __GLX_VENDOR_LIBRARY_NAME=nvidia' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### 1.3 方式二：Docker 安装（推荐服务器/无头环境）
+### 1.4 方式三：Docker 安装（推荐服务器/无头环境）
 
 #### 步骤 1：安装 Docker
 
@@ -673,6 +737,9 @@ python -m scripts.eval ... --headless
 
 ```bash
 # === 环境激活 ===
+# Pixi 方式（推荐）
+pixi shell
+# UV 方式
 source .venv/bin/activate
 
 # === 数据收集 ===

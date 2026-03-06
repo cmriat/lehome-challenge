@@ -1,0 +1,66 @@
+[workspace]
+name = "lehome-challenge"
+version = "0.1.0"
+description = "LeHome Challenge - Robot Learning Project"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+# System glibc 2.35 required for isaacsim manylinux_2_35 wheels
+[system-requirements]
+linux = "4.18"
+libc = { family = "glibc", version = "2.35" }
+
+# Conda dependencies: Python + system-level build tools
+[dependencies]
+python = "3.11.*"
+cmake = ">=3.20"
+setuptools = ">=71.0.0,<81.0.0"
+
+[pypi-dependencies]
+# === Isaac Sim ===
+isaacsim = { version = "==5.1.0", extras = ["all", "extscache"] }
+
+# === Isaac Lab (editable, manually clone to third_party/IsaacLab) ===
+isaaclab = { path = "third_party/IsaacLab/source/isaaclab", editable = true }
+isaaclab_assets = { path = "third_party/IsaacLab/source/isaaclab_assets", editable = true }
+isaaclab_mimic = { path = "third_party/IsaacLab/source/isaaclab_mimic", editable = true }
+isaaclab_rl = { path = "third_party/IsaacLab/source/isaaclab_rl", editable = true }
+isaaclab_tasks = { path = "third_party/IsaacLab/source/isaaclab_tasks", editable = true }
+
+# === Local project ===
+lehome = { path = "source/lehome", editable = true }
+
+# === ML frameworks ===
+torch = "==2.7.0"
+torchvision = "==0.22.0"
+lerobot = "==0.4.3"
+transformers = { git = "https://github.com/huggingface/transformers.git", branch = "fix/lerobot_openpi" }
+
+# === Robotics ===
+pinocchio = ">=0.4.3"
+open3d = ">=0.19.0"
+ftservo-python-sdk = "*"
+
+# === Utilities ===
+num2words = ">=0.5.14"
+transforms3d = ">=0.4.2"
+
+[pypi-options]
+index-strategy = "unsafe-best-match"
+extra-index-urls = [
+    "https://pypi.nvidia.com/",
+    "https://download.pytorch.org/whl/cu128",
+]
+
+[pypi-options.dependency-overrides]
+packaging = ">=24.2,<26"
+numpy = "==1.26.0"
+# Override strict constraints from upstream IsaacLab setup.py
+starlette = ">=0.40.0,<0.46.0"    # isaaclab pins ==0.49.1, conflicts with isaacsim
+gymnasium = ">=0.29.1,<2.0"       # isaaclab pins ==1.2.1
+ipywidgets = ">=8.1.5,<9.0"       # isaaclab_mimic pins ==8.1.5
+
+[tasks]
+eval = "python scripts/eval.py"
+dataset = "python scripts/dataset.py"
+dataset-sim = "python scripts/dataset_sim.py"
