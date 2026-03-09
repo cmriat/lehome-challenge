@@ -47,6 +47,7 @@ transforms3d = ">=0.4.2"
 
 [pypi-options]
 index-strategy = "unsafe-best-match"
+no-build-isolation = ["flatdict"]
 extra-index-urls = [
     "https://pypi.nvidia.com/",
     "https://download.pytorch.org/whl/cu128",

@@ -2,7 +2,12 @@ import os
 import json
 from collections.abc import Callable
 from typing import Dict, Tuple
-from pynput.keyboard import Listener, Key
+
+# 延迟导入 pynput，避免无头服务器上报错
+Listener = None
+Key = None
+if os.environ.get("LEHOME_DISABLE_KEYBOARD") != "1":
+    from pynput.keyboard import Listener, Key
 
 from .common.motors import (
     FeetechMotorsBus,
@@ -60,9 +65,15 @@ class SO101Leader(Device):
         self._reset_state = False
         self._additional_callbacks = {}
 
-        self.listener = Listener(on_press=self.on_press, on_release=self.on_release)
-        self.listener.start()
-        self._display_controls()
+        # 无头模式下禁用键盘监听
+        self._keyboard_disabled = os.environ.get("LEHOME_DISABLE_KEYBOARD") == "1"
+        if not self._keyboard_disabled and Listener is not None:
+            self.listener = Listener(on_press=self.on_press, on_release=self.on_release)
+            self.listener.start()
+            self._display_controls()
+        else:
+            self.listener = None
+            print("[INFO] Keyboard disabled (LEHOME_DISABLE_KEYBOARD=1)")
         self.b_disable = False
         self.other_key_enable = False
 
@@ -120,7 +131,7 @@ class SO101Leader(Device):
                     self._additional_callbacks["D"]()
         except AttributeError:
             # Handle special keys (like ESC)
-            if key == Key.esc and "ESCAPE" in self._additional_callbacks:
+            if Key is not None and key == Key.esc and "ESCAPE" in self._additional_callbacks:
                 if self.other_key_enable == True:
                     self._additional_callbacks["ESCAPE"]()
 
