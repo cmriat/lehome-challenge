@@ -23,7 +23,8 @@ def main():
 
     # Extract model name from policy_path (use second-to-last directory name)
     policy_path = Path(args.policy_path)
-    model_name = policy_path.parent.name if policy_path.parent.name else policy_path.name
+    # model_name = policy_path.parent.name if policy_path.parent.name else policy_path.name
+    model_name = policy_path.name
     garment_type = args.garment_type
     datetime_str = datetime.now().strftime("%Y%m%d_%H")
     log_file_name = f"{model_name}_{garment_type}_{datetime_str}.log"

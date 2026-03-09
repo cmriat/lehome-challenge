@@ -66,10 +66,10 @@ if [ "$VALID" = false ]; then
 fi
 
 # 默认参数
-DEFAULT_POLICY_PATH="/home/maozan/code/data/ckpts/pi05_step80k/pretrained_model"
+DEFAULT_POLICY_PATH="/home/maozan/code/data/ckpts/pi05_step124k"
 DEFAULT_DATASET_ROOT="Datasets/example/four_types_merged"
 DEFAULT_NUM_EPISODES=5
-DEFAULT_VIDEO_DIR="outputs/eval_videos_pi05_step80k"
+DEFAULT_VIDEO_DIR="outputs/eval_videos_pi05_step124k"
 
 # 解析命令行参数，允许覆盖默认值
 POLICY_PATH="$DEFAULT_POLICY_PATH"
