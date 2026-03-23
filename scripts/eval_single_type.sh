@@ -19,7 +19,7 @@
 #   CUDA_VISIBLE_DEVICES=0 bash scripts/eval_single_type.sh pant_short
 #
 #   # 覆盖其他参数
-#   bash scripts/eval_single_type.sh top_long --num_episodes 10 --no_headless
+#   CUDA_VISIBLE_DEVICES=0 bash scripts/eval_single_type.sh top_long --no_headless
 
 set -euo pipefail
 
