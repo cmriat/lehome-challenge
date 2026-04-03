@@ -1,5 +1,6 @@
 import os
 import argparse
+import atexit
 import gymnasium as gym
 import torch
 import numpy as np
@@ -47,191 +48,216 @@ def run_evaluation_loop(
     eval_dataset = None
     json_path = None
     episode_index = 0
-    if args.save_datasets:
-        features = None
-        if args.dataset_root and Path(args.dataset_root).exists():
-            source_dataset = LeRobotDataset(repo_id="collected_dataset", root=Path(args.dataset_root))
-            features = dict(source_dataset.meta.features)
-            fps = source_dataset.fps
-        else:
-            fps = 30  # Default FPS if no source dataset is provided
-            action_names = [
-                "shoulder_pan", "shoulder_lift", "elbow_flex",
-                "wrist_flex", "wrist_roll", "gripper",
-            ]
-            if is_bimanual:
-                left_names = [f"left_{n}" for n in action_names]
-                right_names = [f"right_{n}" for n in action_names]
-                joint_names = left_names + right_names
-            else:
-                joint_names = action_names
-            dim = len(joint_names)
-            features = {
-                "observation.state": {
-                    "dtype": "float32",
-                    "shape": (dim,),
-                    "names": joint_names,
-                },
-                "action": {
-                    "dtype": "float32",
-                    "shape": (dim,),
-                    "names": joint_names,
-                },
-            }
-            image_keys = ["top_rgb", "left_rgb", "right_rgb"] if is_bimanual else ["top_rgb", "wrist_rgb"]
-            for key in image_keys:
-                features[f"observation.images.{key}"] = {
-                    "dtype": "video",
-                    "shape": (480, 640, 3),
-                    "names": ["height", "width", "channels"],
-                }
-        root_path = Path(args.eval_dataset_path)
-        eval_dataset = LeRobotDataset.create(
-            repo_id="lehome_eval",
-            fps=fps,
-            root=get_next_experiment_path_with_gap(root_path),
-            use_videos=True,
-            image_writer_threads=8,
-            image_writer_processes=0,
-            features=features,
-        )
-        json_path = eval_dataset.root / "meta" / "garment_info.json"
-
     all_episode_metrics = []
-    logger.info(f"Starting evaluation: {args.num_episodes} episodes")
-    rate_limiter = RateLimiter(args.step_hz)
 
-    for i in range(args.num_episodes):
-        # 1. Reset Environment & Policy
-        env.reset()
-        policy.reset()
-        stabilize_garment_after_reset(env, args)
-
-        # 2. Initial Observation (Numpy)
-        object_initial_pose = env.get_all_pose() if args.save_datasets else None
-        observation_dict = env._get_observations()
-
-        # Prepare for video recording
-        episode_frames = (
-            {k: [] for k in observation_dict.keys() if "images" in k}
-            if args.save_video
-            else {}
-        )
-
-        episode_return = 0.0
-        episode_length = 0
-        extra_steps = 0
-        success_flag = False
-        success = torch.tensor(False)
-
-        for st in range(args.max_steps):
-            if rate_limiter:
-                rate_limiter.sleep(env)
-
-            # 3. Policy Inference (The core abstraction)
-            # Input: Numpy Dict -> Output: Numpy Array
-            action_np = policy.select_action(observation_dict)
-
-            # 4. Prepare Action for Environment (Tensor)
-            # Convert numpy action to tensor for Isaac Lab
-            action = torch.from_numpy(action_np).float().to(args.device).unsqueeze(0)
-
-            # 5. Inverse Kinematics (Optional Helper Logic)
-            # If policy outputs EE pose but env needs joints
-            if args.use_ee_pose and ee_solver is not None:
-                current_joints = (
-                    torch.from_numpy(observation_dict["observation.state"])
-                    .float()
-                    .to(args.device)
-                )
-                action = convert_ee_pose_to_joints(
-                    ee_pose_action=action.squeeze(0),
-                    current_joints=current_joints,
-                    solver=ee_solver,
-                    is_bimanual=is_bimanual,
-                    state_unit="rad",
-                    device=args.device,
-                ).unsqueeze(0)
-
-            # 6. Step Environment
-            env.step(action)
-
-            # Check success first
-            if not success_flag:
-                success = env._get_success()
-                if success.item():
-                    success_flag = True
-                    extra_steps = 50  # Run a bit longer after success to settle
-
-            # Get reward from environment (Isaac Lab stores rewards internally)
-            reward_value = env._get_rewards()
-            if isinstance(reward_value, torch.Tensor):
-                reward = reward_value.item()
+    try:
+        if args.save_datasets:
+            features = None
+            if args.dataset_root and Path(args.dataset_root).exists():
+                source_dataset = LeRobotDataset(repo_id="collected_dataset", root=Path(args.dataset_root))
+                features = dict(source_dataset.meta.features)
+                fps = source_dataset.fps
             else:
-                reward = float(reward_value)
+                fps = 30  # Default FPS if no source dataset is provided
+                action_names = [
+                    "shoulder_pan", "shoulder_lift", "elbow_flex",
+                    "wrist_flex", "wrist_roll", "gripper",
+                ]
+                if is_bimanual:
+                    left_names = [f"left_{n}" for n in action_names]
+                    right_names = [f"right_{n}" for n in action_names]
+                    joint_names = left_names + right_names
+                else:
+                    joint_names = action_names
+                dim = len(joint_names)
+                features = {
+                    "observation.state": {
+                        "dtype": "float32",
+                        "shape": (dim,),
+                        "names": joint_names,
+                    },
+                    "action": {
+                        "dtype": "float32",
+                        "shape": (dim,),
+                        "names": joint_names,
+                    },
+                }
+                image_keys = ["top_rgb", "left_rgb", "right_rgb"] if is_bimanual else ["top_rgb", "wrist_rgb"]
+                for key in image_keys:
+                    features[f"observation.images.{key}"] = {
+                        "dtype": "video",
+                        "shape": (480, 640, 3),
+                        "names": ["height", "width", "channels"],
+                    }
+            root_path = Path(args.eval_dataset_path)
+            eval_dataset = LeRobotDataset.create(
+                repo_id="lehome_eval",
+                fps=fps,
+                root=get_next_experiment_path_with_gap(root_path),
+                use_videos=True,
+                image_writer_threads=8,
+                image_writer_processes=0,
+                features=features,
+            )
+            json_path = eval_dataset.root / "meta" / "garment_info.json"
 
-            # Accumulate reward for all steps (including post-success steps)
-            episode_return += reward
-            # Only count length before success (for consistency with episode termination)
-            if not success_flag:
-                episode_length += 1
+            # Register atexit handler to ensure dataset is finalized on exit
+            def _cleanup_dataset():
+                if eval_dataset is not None:
+                    try:
+                        eval_dataset.finalize()
+                        logger.info(f"Dataset finalized via atexit: {eval_dataset.root}")
+                    except Exception as e:
+                        logger.warning(f"Error finalizing dataset in atexit: {e}")
 
-            # Update Observation
+            _cleanup_fn = _cleanup_dataset
+            atexit.register(_cleanup_fn)
+
+        logger.info(f"Starting evaluation: {args.num_episodes} episodes")
+        rate_limiter = RateLimiter(args.step_hz)
+
+        for i in range(args.num_episodes):
+            # 1. Reset Environment & Policy
+            env.reset()
+            policy.reset()
+            stabilize_garment_after_reset(env, args)
+
+            # 2. Initial Observation (Numpy)
+            object_initial_pose = env.get_all_pose() if args.save_datasets else None
             observation_dict = env._get_observations()
 
-            # Recording
-            if args.save_datasets:
-                frame = {
-                    k: v
-                    for k, v in observation_dict.items()
-                    if k != "observation.top_depth"
-                }
-                frame["task"] = args.task_description
-                eval_dataset.add_frame(frame)
-
-            if args.save_video:
-                for key, val in observation_dict.items():
-                    if "images" in key:
-                        episode_frames[key].append(val.copy())
-
-            if success_flag:
-                extra_steps -= 1
-                if extra_steps <= 0:
-                    break
-
-        # --- End of Episode Handling ---
-        is_success = success.item() if success_flag else False
-
-        # Save Datasets
-        if args.save_datasets:
-            if success_flag:
-                eval_dataset.save_episode()
-                append_episode_initial_pose(
-                    json_path,
-                    episode_index,
-                    object_initial_pose,
-                    garment_name=garment_name,
-                )
-                episode_index += 1
-            else:
-                eval_dataset.clear_episode_buffer()
-
-        # Save Videos (Using generic util)
-        if args.save_video:
-            save_videos_from_observations(
-                episode_frames,
-                success=success if success_flag else torch.tensor(False),
-                save_dir=args.video_dir,
-                episode_idx=i,
+            # Prepare for video recording
+            episode_frames = (
+                {k: [] for k in observation_dict.keys() if "images" in k}
+                if args.save_video
+                else {}
             )
 
-        # Log Metrics
-        all_episode_metrics.append(
-            {"return": episode_return, "length": episode_length, "success": is_success}
-        )
-        logger.info(
-            f"Episode {i + 1}/{args.num_episodes}: Return={episode_return:.2f}, Length={episode_length}, Success={is_success}"
-        )
+            episode_return = 0.0
+            episode_length = 0
+            extra_steps = 0
+            success_flag = False
+            success = torch.tensor(False)
+
+            for st in range(args.max_steps):
+                if rate_limiter:
+                    rate_limiter.sleep(env)
+
+                # 3. Policy Inference (The core abstraction)
+                # Input: Numpy Dict -> Output: Numpy Array
+                action_np = policy.select_action(observation_dict)
+
+                # 4. Prepare Action for Environment (Tensor)
+                # Convert numpy action to tensor for Isaac Lab
+                action = torch.from_numpy(action_np).float().to(args.device).unsqueeze(0)
+
+                # 5. Inverse Kinematics (Optional Helper Logic)
+                # If policy outputs EE pose but env needs joints
+                if args.use_ee_pose and ee_solver is not None:
+                    current_joints = (
+                        torch.from_numpy(observation_dict["observation.state"])
+                        .float()
+                        .to(args.device)
+                    )
+                    action = convert_ee_pose_to_joints(
+                        ee_pose_action=action.squeeze(0),
+                        current_joints=current_joints,
+                        solver=ee_solver,
+                        is_bimanual=is_bimanual,
+                        state_unit="rad",
+                        device=args.device,
+                    ).unsqueeze(0)
+
+                # 6. Step Environment
+                env.step(action)
+
+                # Check success first
+                if not success_flag:
+                    success = env._get_success()
+                    if success.item():
+                        success_flag = True
+                        extra_steps = 50  # Run a bit longer after success to settle
+
+                # Get reward from environment (Isaac Lab stores rewards internally)
+                reward_value = env._get_rewards()
+                if isinstance(reward_value, torch.Tensor):
+                    reward = reward_value.item()
+                else:
+                    reward = float(reward_value)
+
+                # Accumulate reward for all steps (including post-success steps)
+                episode_return += reward
+                # Only count length before success (for consistency with episode termination)
+                if not success_flag:
+                    episode_length += 1
+
+                # Update Observation
+                observation_dict = env._get_observations()
+
+                # Recording
+                if args.save_datasets:
+                    frame = {
+                        k: v
+                        for k, v in observation_dict.items()
+                        if k != "observation.top_depth"
+                    }
+                    frame["task"] = args.task_description
+                    eval_dataset.add_frame(frame)
+
+                if args.save_video:
+                    for key, val in observation_dict.items():
+                        if "images" in key:
+                            episode_frames[key].append(val.copy())
+
+                if success_flag:
+                    extra_steps -= 1
+                    if extra_steps <= 0:
+                        break
+
+            # --- End of Episode Handling ---
+            is_success = success.item() if success_flag else False
+
+            # Save Datasets
+            if args.save_datasets:
+                if success_flag:
+                    eval_dataset.save_episode()
+                    append_episode_initial_pose(
+                        json_path,
+                        episode_index,
+                        object_initial_pose,
+                        garment_name=garment_name,
+                    )
+                    episode_index += 1
+                else:
+                    eval_dataset.clear_episode_buffer()
+
+            # Save Videos (Using generic util)
+            if args.save_video:
+                save_videos_from_observations(
+                    episode_frames,
+                    success=success if success_flag else torch.tensor(False),
+                    save_dir=args.video_dir,
+                    episode_idx=i,
+                )
+
+            # Log Metrics
+            all_episode_metrics.append(
+                {"return": episode_return, "length": episode_length, "success": is_success}
+            )
+            logger.info(
+                f"Episode {i + 1}/{args.num_episodes}: Return={episode_return:.2f}, Length={episode_length}, Success={is_success}"
+            )
+
+    finally:
+        # Finalize dataset to ensure parquet files are properly closed
+        if args.save_datasets and eval_dataset is not None:
+            # Unregister atexit handler since we're finalizing here
+            try:
+                atexit.unregister(_cleanup_fn)
+            except NameError:
+                pass  # _cleanup_fn may not be defined if dataset creation failed
+            eval_dataset.finalize()
+            logger.info(f"Dataset finalized and saved to {eval_dataset.root}")
 
     return all_episode_metrics
 

@@ -1,0 +1,94 @@
+# ============================================================================
+# Training Command (8x A800 80G)
+# ============================================================================
+# Single node, 8 GPUs distributed training:
+#   accelerate launch --mixed_precision=bf16 --num_processes=8 $(which lerobot-train) \
+#     --config_path=configs/train_pi05_full_para.yaml 2>&1 | tee logs/train_pi05_$(date +%Y%m%d_%H%M%S).log
+#
+# Note: Pi0.5 uses bfloat16 by default for better numerical stability
+# ============================================================================
+
+dataset:
+  repo_id: lehome_competition
+  root: Datasets/example/four_types_merged
+
+policy:
+  type: pi05
+  device: cuda
+  push_to_hub: false
+  pretrained_path: lerobot/pi05_base
+
+  # Pi0.5 model configuration
+  paligemma_variant: gemma_2b          # Vision-language backbone
+  action_expert_variant: gemma_300m   # Action prediction expert
+  dtype: bfloat16                      # Use bf16 for training
+
+  # Action prediction settings
+  chunk_size: 30                       # Predict 30 action steps
+  n_action_steps: 30                   # Execute 30 action steps (must <= chunk_size)
+  n_obs_steps: 1                       # Single observation
+
+  # Dimension settings (will be padded internally)
+  max_state_dim: 32                    # Pi0.5 pads to 32
+  max_action_dim: 32                   # Pi0.5 pads to 32
+
+  # Image resolution (Pi0.5 uses 224x224)
+  image_resolution: [224, 224]
+
+  # Flow matching inference
+  num_inference_steps: 10              # Balance between quality and speed (default: 10)
+
+  # Full fine-tuning for 8x A800 80G
+  freeze_vision_encoder: false
+  train_expert_only: false
+
+  # Memory optimization
+  gradient_checkpointing: false        # Enable if OOM
+  compile_model: false                 # torch.compile (experimental)
+
+  input_features:
+    observation.state:
+      type: STATE
+      shape: [12]                      # Will be padded to 32
+    observation.images.top_rgb:
+      type: VISUAL
+      shape: [3, 224, 224]             # Pi0.5 resolution
+    observation.images.left_rgb:
+      type: VISUAL
+      shape: [3, 224, 224]
+    observation.images.right_rgb:
+      type: VISUAL
+      shape: [3, 224, 224]
+
+  output_features:
+    action:
+      type: ACTION
+      shape: [12]                      # Will be padded to 32
+
+output_dir: outputs/train/pi05_full_para
+batch_size: 8                         # Reduced for Pi0.5 (larger model)
+steps: 124620                           # 30 epochs (2,077 steps/epoch)
+save_freq: 5000                        # Every 3 epochs
+log_freq: 200
+
+# Use custom optimizer settings (override policy preset)
+use_policy_training_preset: false
+
+optimizer:
+  type: adamw
+  lr: 5e-5                             # Pi0.5 recommended: 2.5e-5 to 1e-4
+  betas: [0.9, 0.95]                   # Pi0.5 defaults
+  eps: 1e-8
+  weight_decay: 0.01                   # Pi0.5 default
+  grad_clip_norm: 1.0
+
+scheduler:
+  type: cosine_decay_with_warmup
+  num_warmup_steps: 4000               # ~1 epoch warmup
+  num_decay_steps: 124620               # Match total steps
+  peak_lr: 5e-5
+  decay_lr: 5e-6
+
+wandb:
+  enable: true
+  project: lehome-challenge

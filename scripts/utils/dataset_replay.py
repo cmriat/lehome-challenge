@@ -552,13 +552,26 @@ def replay(args: argparse.Namespace) -> None:
     env_cfg = parse_env_cfg(args.task, device=device)
 
     # Set garment configuration
+    override_garment = getattr(args, "override_garment", None)
     try:
         detected_garment_name = get_garment_name_from_json(args.dataset_root)
         logger.info(f"Auto-detected garment name from json: {detected_garment_name}")
-        env_cfg.garment_name = detected_garment_name
+        if override_garment:
+            logger.info(
+                f"Overriding garment: {detected_garment_name} -> {override_garment}"
+            )
+            env_cfg.garment_name = override_garment
+        else:
+            env_cfg.garment_name = detected_garment_name
     except Exception as e:
-        logger.error(f"Could not determine garment name from dataset: {e}")
-        raise
+        if override_garment:
+            logger.warning(
+                f"Could not detect garment from dataset ({e}), using override: {override_garment}"
+            )
+            env_cfg.garment_name = override_garment
+        else:
+            logger.error(f"Could not determine garment name from dataset: {e}")
+            raise
     env_cfg.garment_version = args.garment_version
     env_cfg.garment_cfg_base_path = args.garment_cfg_base_path
     env_cfg.particle_cfg_path = args.particle_cfg_path

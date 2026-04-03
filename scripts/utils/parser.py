@@ -259,6 +259,13 @@ def setup_replay_parser(
         default=False,
         help="Disable depth observation during replay.",
     )
+    parser.add_argument(
+        "--override_garment",
+        type=str,
+        default=None,
+        help="Override garment name (e.g. 'Top_Short_Unseen_0'). "
+        "If set, replay actions on this garment instead of the one in the dataset.",
+    )
 
     return parser
 
