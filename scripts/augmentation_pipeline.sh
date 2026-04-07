@@ -3,6 +3,38 @@
 # 用法:
 #   bash scripts/augmentation_pipeline.sh [OPTIONS]
 #
+# ====================== 分层采样策略概述 ======================
+#
+# 基于 pi05_step62k 模型的评测结果（10eps/件, seed=42），按单件衣物粒度
+# 设计两阶段互补的数据增强策略:
+#
+# Phase 1a - Targeted Reject Sampling (针对性拒绝采样):
+#   用当前策略对每件衣物做 rollout，只保留成功轨迹。
+#   按成功率反比分配采样预算:
+#     >=90%  → 3 eps   (已经很强，少量补充)
+#     80-89% → 5 eps
+#     50-79% → 10 eps
+#     20-49% → 15 eps  (弱项，重点补充)
+#     0%     → 跳过    (策略完全无法成功，交给 Phase 1b)
+#
+# Phase 1b - Cross-Garment Replay (跨衣物动作重放):
+#   将同尺度组内高成功率衣物的成功轨迹，重放到弱项/Unseen 衣物上。
+#   覆盖 Phase 1a 无法触及的 0% 衣物，以及 20-50% 区间的弱项。
+#   严格遵守同尺度配对约束（衣物 scale 一致才能 replay）。
+#
+# Phase 2 - Merge (三级合并):
+#   2a: 合并所有 reject sampling v2 子目录
+#   2b: 合并所有 cross-garment replay 子目录
+#   2c: 原始数据 + reject_v1 + reject_v2 + cross_garment → 最终训练集
+#
+# 设计原则:
+#   - 采样预算向弱项品类倾斜 (Top_Short 50% / Pant_Long 57.5% 获得更多资源)
+#   - 高成功率品类 (Pant_Short 84%) 削减预算，避免浪费
+#   - 两阶段互补: reject sampling 产生策略分布内的轨迹，
+#     cross-garment replay 通过迁移扩展覆盖范围
+#
+# ==============================================================
+#
 # 阶段控制 (环境变量):
 #   RUN_REJECT_SAMPLING=true/false  (默认 true)
 #   RUN_CROSS_GARMENT=true/false    (默认 true)
@@ -20,7 +52,7 @@ cd "$PROJECT_DIR"
 # ---------- 阶段控制 ----------
 RUN_REJECT_SAMPLING="${RUN_REJECT_SAMPLING:-true}"
 RUN_CROSS_GARMENT="${RUN_CROSS_GARMENT:-true}"
-RUN_MERGE="${RUN_MERGE:-true}"
+RUN_MERGE="${RUN_MERGE:-false}"
 
 # ---------- 路径配置 ----------
 ORIGINAL_DATASET="Datasets/example/four_types_merged"

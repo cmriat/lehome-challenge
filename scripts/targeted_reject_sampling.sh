@@ -3,11 +3,26 @@
 # 用法:
 #   bash scripts/targeted_reject_sampling.sh [OPTIONS]
 #
-# 根据评测成功率为每件衣物分配不同的采样轮数:
-#   - 成功率 >= 80%: 5 eps (已经很强，少采)
-#   - 成功率 50-79%: 10 eps
-#   - 成功率 20-49%: 15 eps (弱项，多采)
-#   - 成功率 0%: 跳过 (交给 cross-garment replay)
+# ====================== 采样策略 ======================
+#
+# 基于 pi05_step62k 评测结果 (10eps/件, seed=42)，按单件成功率分 5 档:
+#
+#   成功率    | 采样量 | 理由
+#   ----------|--------|------
+#   >= 90%    | 3 eps  | 已足够强，少量补充防止遗忘
+#   80-89%    | 5 eps  | 较强但仍有失败模式，适度补充
+#   50-79%    | 10 eps | 中等水平，需要较多成功轨迹引导
+#   20-49%    | 15 eps | 弱项，重点补充 (实际有效轨迹 ≈ 成功率×15)
+#   0%        | 跳过   | 策略完全失败，reject sampling 无法产出，
+#             |        | 由 cross_garment_replay.sh 通过动作迁移覆盖
+#
+# 各品类预算分配 (总计 ~403 eps):
+#   Pant_Short (84.17%): ~63 eps  — 削减高成功率预算
+#   Top_Long   (72.50%): ~94 eps
+#   Pant_Long  (57.50%): ~125 eps — 整体偏弱，全量投入
+#   Top_Short  (50.00%): ~121 eps — 最弱品类，最大投入
+#
+# =======================================================
 #
 # 通过为每件衣物生成临时 txt 文件 + custom garment_type 实现单件粒度控制
 # 所有额外参数会透传给 `python -m scripts.eval`
@@ -32,18 +47,18 @@ EXTRA_ARGS=("$@")
 # ---------- 单件衣物采样配置 ----------
 # 格式: "衣物名|episode数"
 # 基于测评结果 (lehome_pi05_step62k_reject, seed=42, 10eps)
-# 按成功率分级: >=80% -> 5eps, 50-79% -> 10eps, 20-49% -> 15eps, 0% -> skip
+# 按成功率分级: >=90% -> 3eps, 80-89% -> 5eps, 50-79% -> 10eps, 20-49% -> 15eps, 0% -> skip
 
 SAMPLING_JOBS=(
     # ===== Pant_Short (84.17% overall) =====
-    "Pant_Short_Seen_0|5"       # 90%
-    "Pant_Short_Seen_1|5"       # 100%
+    "Pant_Short_Seen_0|3"       # 90%
+    "Pant_Short_Seen_1|3"       # 100%
     "Pant_Short_Seen_2|10"      # 70%
-    "Pant_Short_Seen_3|5"       # 100%
-    "Pant_Short_Seen_4|5"       # 100%
-    "Pant_Short_Seen_5|5"       # 90%
-    "Pant_Short_Seen_6|5"       # 90%
-    "Pant_Short_Seen_7|5"       # 100%
+    "Pant_Short_Seen_3|3"       # 100%
+    "Pant_Short_Seen_4|3"       # 100%
+    "Pant_Short_Seen_5|3"       # 90%
+    "Pant_Short_Seen_6|3"       # 90%
+    "Pant_Short_Seen_7|3"       # 100%
     "Pant_Short_Seen_8|10"      # 70%
     "Pant_Short_Seen_9|5"       # 80%
     "Pant_Short_Unseen_0|15"    # 40%
@@ -51,14 +66,14 @@ SAMPLING_JOBS=(
 
     # ===== Top_Long (72.50% overall) =====
     "Top_Long_Seen_0|5"         # 80%
-    "Top_Long_Seen_1|5"         # 90%
+    "Top_Long_Seen_1|3"         # 90%
     "Top_Long_Seen_2|5"         # 80%
     "Top_Long_Seen_3|15"        # 40%
     "Top_Long_Seen_4|10"        # 70%
-    "Top_Long_Seen_5|5"         # 100%
+    "Top_Long_Seen_5|3"         # 100%
     "Top_Long_Seen_6|10"        # 60%
     "Top_Long_Seen_7|10"        # 70%
-    "Top_Long_Seen_8|5"         # 90%
+    "Top_Long_Seen_8|3"         # 90%
     "Top_Long_Seen_9|5"         # 80%
     "Top_Long_Unseen_0|10"      # 70%
     "Top_Long_Unseen_1|15"      # 40%
@@ -78,11 +93,11 @@ SAMPLING_JOBS=(
     "Pant_Long_Unseen_1|10"     # 60%
 
     # ===== Top_Short (50.00% overall) =====
-    "Top_Short_Seen_0|5"        # 90%
+    "Top_Short_Seen_0|3"        # 90%
     "Top_Short_Seen_1|5"        # 80%
     "Top_Short_Seen_2|15"       # 40%
     "Top_Short_Seen_3|10"       # 60%
-    "Top_Short_Seen_4|5"        # 90%
+    "Top_Short_Seen_4|3"        # 90%
     "Top_Short_Seen_5|10"       # 70%
     "Top_Short_Seen_6|10"       # 50%
     "Top_Short_Seen_7|15"       # 30%

@@ -3,8 +3,35 @@
 # 用法:
 #   bash scripts/cross_garment_replay.sh [OPTIONS]
 #
+# ====================== 配对策略 ======================
+#
+# 核心思想: 对于 reject sampling 无法覆盖或效率低的弱项衣物，
+# 从同尺度组内的高成功率衣物"借用"成功轨迹进行动作重放。
+#
+# 配对规则:
+#   1. 严格同尺度约束 — 只在相同 scale 的衣物间配对 (形态相近才有效)
+#   2. 源衣物选择 — 优先选成功率最高的 Seen 衣物作为源
+#   3. 目标覆盖范围 — 成功率 0-50% 的弱项衣物
+#   4. 每个源提供 25 episodes，每条重放 3 次，只保留成功的
+#
+# 尺度分组:
+#   Top_Short  scale=0.45: Seen_0,1,2,5,6,7,8,9 + Unseen_0
+#   Top_Short  scale=0.65: Seen_3,4 + Unseen_1
+#   Top_Long   scale=0.45: Seen_0-2,4-9 + Unseen_0,1
+#   Top_Long   scale=0.40: Seen_3 (无同尺度源, 跨尺度尝试)
+#   Pant_Long  scale=0.37: 全部 12 件 (同尺度, 互相 replay 可行性最好)
+#   Pant_Short scale=0.45: 全部 12 件
+#
+# 当前覆盖 (19 个配对任务):
+#   Top_Short:  Unseen_0(0%), Seen_9(20%), Seen_7(30%),
+#               Seen_2(40%), Seen_8(40%), Unseen_1(30%)
+#   Top_Long:   Unseen_1(40%), Seen_3(40%,跨尺度)
+#   Pant_Short: Unseen_0(40%)
+#   Pant_Long:  Seen_0(20%), Seen_2(50%), Seen_6(50%), Seen_8(50%)
+#
+# =======================================================
+#
 # 所有额外参数会透传给 `pixi run dataset-sim replay`
-# 任务列表按尺度分组配对，确保同尺度的衣物才进行跨衣物 replay
 
 set -euo pipefail
 
@@ -45,6 +72,10 @@ REPLAY_JOBS=(
     "Top_Short_Seen_9|top_short|0|25|Seen_0(90%)"
     # Seen_7 (30%) <- Seen_1
     "Top_Short_Seen_7|top_short|25|50|Seen_1(80%)"
+    # Seen_2 (40%) <- Seen_0 (同 scale=0.45)
+    "Top_Short_Seen_2|top_short|0|25|Seen_0(90%)"
+    # Seen_8 (40%) <- Seen_1 (同 scale=0.45)
+    "Top_Short_Seen_8|top_short|25|50|Seen_1(80%)"
 
     # ===== Top_Short (scale=0.65 组) =====
     # Unseen_1 (30%) <- Seen_3, Seen_4
@@ -63,10 +94,16 @@ REPLAY_JOBS=(
     "Pant_Short_Unseen_0|pant_short|25|50|Seen_1(100%)"
     "Pant_Short_Unseen_0|pant_short|75|100|Seen_3(100%)"
 
-    # ===== Pant_Long (scale=0.37 组) =====
+    # ===== Pant_Long (scale=0.37 组, 全部同尺度) =====
     # Seen_0 (20%) <- Seen_1, Seen_5
     "Pant_Long_Seen_0|pant_long|25|50|Seen_1(70%)"
     "Pant_Long_Seen_0|pant_long|125|150|Seen_5(70%)"
+    # Seen_2 (50%) <- Seen_1 (70%)
+    "Pant_Long_Seen_2|pant_long|25|50|Seen_1(70%)"
+    # Seen_6 (50%) <- Seen_7 (70%)
+    "Pant_Long_Seen_6|pant_long|175|200|Seen_7(70%)"
+    # Seen_8 (50%) <- Seen_5 (70%)
+    "Pant_Long_Seen_8|pant_long|125|150|Seen_5(70%)"
 )
 
 # ---------- 辅助函数 ----------
