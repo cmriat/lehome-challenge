@@ -17,6 +17,7 @@ from .parser import (
     setup_read_parser,
     setup_augment_parser,
     setup_merge_parser,
+    setup_delta_stats_parser,
     setup_eval_parser,
 )
 from .common import launch_app, launch_app_from_args, close_app
@@ -26,6 +27,7 @@ from .dataset_processing import (
     merge_datasets,
     merge_garment_info,
 )
+from .delta_action_stats import compute_delta_action_stats, load_delta_action_stats
 
 # Note: evaluation functions are not imported at module level to avoid
 # importing Isaac Sim modules before SimulationApp is launched.
@@ -38,7 +40,10 @@ __all__ = [
     "setup_read_parser",
     "setup_augment_parser",
     "setup_merge_parser",
+    "setup_delta_stats_parser",
     "setup_eval_parser",
+    "compute_delta_action_stats",
+    "load_delta_action_stats",
     "launch_app",
     "launch_app_from_args",
     "close_app",

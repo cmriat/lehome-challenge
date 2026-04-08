@@ -30,11 +30,13 @@ class LeRobotPolicy(BasePolicy):
     """
 
     def __init__(
-        self, 
-        policy_path: str, 
-        dataset_root: str, 
-        task_description: str, 
-        device: str = "cuda"
+        self,
+        policy_path: str,
+        dataset_root: str,
+        task_description: str,
+        device: str = "cuda",
+        use_delta_actions: bool = False,
+        delta_stats_path: Optional[str] = None,
     ):
         """
         Initialize the LeRobot policy.
@@ -44,10 +46,15 @@ class LeRobotPolicy(BasePolicy):
             dataset_root: Path to the dataset root (used for metadata).
             task_description: Text description of the task (for VLA models).
             device: Device to run the model on ('cpu' or 'cuda').
+            use_delta_actions: If True, model outputs delta actions that need
+                to be converted back to absolute joint positions.
+            delta_stats_path: Path to delta_action_stats.json. If None and
+                use_delta_actions is True, will look in dataset_root/meta/.
         """
         super().__init__()
         self.device = torch.device(device)
         self.task_description = task_description
+        self.use_delta_actions = use_delta_actions
         
         logger.info(f"Loading LeRobot policy from: {policy_path}")
         
@@ -79,10 +86,17 @@ class LeRobotPolicy(BasePolicy):
             pretrained_path=policy_path,
             preprocessor_overrides=preprocessor_overrides,
         )
-        
+
+        # 5.1 Delta action support: replace action stats in postprocessor
+        if self.use_delta_actions:
+            self._setup_delta_actions(dataset_root, delta_stats_path)
+
         # 6. Infer Action Dimension (Logic from original run_evaluation_loop)
         self.action_dim = self._infer_action_dim(meta, task_description)
-        logger.info(f"LeRobotPolicy initialized. Action dim: {self.action_dim}")
+        logger.info(
+            f"LeRobotPolicy initialized. Action dim: {self.action_dim}, "
+            f"delta_actions: {self.use_delta_actions}"
+        )
 
     def reset(self):
         """Reset the internal state of the policy."""
@@ -96,29 +110,64 @@ class LeRobotPolicy(BasePolicy):
             observation: Dictionary of numpy arrays (raw environment output).
 
         Returns:
-            action: Numpy array of action values (un-normalized).
+            action: Numpy array of action values (un-normalized, absolute joint positions).
         """
+        # Save current state BEFORE filtering (needed for delta→absolute conversion)
+        current_state = observation.get("observation.state") if self.use_delta_actions else None
+
         # 1. Filter observations (keep only what the policy needs)
         if self.input_features:
             observation = self._filter_observations(observation, self.input_features)
 
         # 2. Preprocess (Numpy -> Tensor Batch, Normalize, etc.)
         batch_obs = self._process_observation(observation)
-        
+
         # 3. Inference
         with torch.inference_mode():
             batch_action = self.policy.select_action(batch_obs)
-            
+
         # 4. Postprocess (Un-normalize)
         if self.postprocessor:
             batch_action = self.postprocessor(batch_action)
-            
+
         # 5. Convert to Numpy (Remove batch dimension)
-        return batch_action.squeeze(0).cpu().numpy()
+        action_np = batch_action.squeeze(0).cpu().numpy()
+
+        # 6. Delta-to-absolute conversion
+        if self.use_delta_actions and current_state is not None:
+            action_np = action_np + current_state
+
+        return action_np
 
     # --------------------------------------------------------------------------
     # Internal Helper Methods
     # --------------------------------------------------------------------------
+
+    def _setup_delta_actions(self, dataset_root: str, delta_stats_path: Optional[str]) -> None:
+        """Load delta stats and replace action stats in the postprocessor."""
+        from pathlib import Path
+        from scripts.utils.delta_action_stats import load_delta_action_stats
+        from scripts.utils.delta_action_processor import replace_action_stats_in_processor
+
+        # Find delta stats file
+        if delta_stats_path and Path(delta_stats_path).exists():
+            stats_path = Path(delta_stats_path)
+        else:
+            stats_path = Path(dataset_root) / "meta" / "delta_action_stats.json"
+
+        if not stats_path.exists():
+            raise FileNotFoundError(
+                f"Delta action stats not found at {stats_path}. "
+                f"Run delta-stats computation first."
+            )
+
+        delta_stats = load_delta_action_stats(stats_path)
+        logger.info(f"Loaded delta action stats from {stats_path}")
+
+        # Replace action stats in postprocessor so unnormalization uses delta range
+        if self.postprocessor:
+            replace_action_stats_in_processor(self.postprocessor, delta_stats)
+            logger.info("Replaced action stats in postprocessor with delta stats")
 
     def _filter_metadata(self, meta: LeRobotDatasetMetadata, expected_keys: Set[str]):
         """Remove extra features from metadata that are not required by the policy."""

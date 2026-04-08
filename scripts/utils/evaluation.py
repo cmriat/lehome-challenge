@@ -315,6 +315,11 @@ def eval(args: argparse.Namespace, simulation_app: Any) -> None:
                 "task_description": args.task_description,
             }
         )
+        # Delta action support
+        if getattr(args, "use_delta_actions", False):
+            policy_kwargs["use_delta_actions"] = True
+            policy_kwargs["delta_stats_path"] = getattr(args, "delta_stats_path", None)
+            logger.info("Delta action mode enabled for evaluation")
     else:
         # For custom policies, pass policy_path as model_path if provided
         if args.policy_path:

@@ -19,6 +19,7 @@ from .utils import (
     setup_read_parser,
     setup_augment_parser,
     setup_merge_parser,
+    setup_delta_stats_parser,
 )
 
 
@@ -38,6 +39,7 @@ def main():
     setup_read_parser(subparsers)
     setup_augment_parser(subparsers)
     setup_merge_parser(subparsers)
+    setup_delta_stats_parser(subparsers)
 
     args = parser.parse_args()
 
@@ -72,6 +74,14 @@ def main():
             Path(args.output_root),
             output_repo_id=args.output_repo_id,
             merge_custom_meta=args.merge_custom_meta,
+        )
+    elif args.command == "delta-stats":
+        from .utils.delta_action_stats import compute_delta_action_stats
+
+        compute_delta_action_stats(
+            dataset_root=Path(args.dataset_root).resolve(),
+            chunk_size=args.chunk_size,
+            output_path=Path(args.output_path).resolve() if args.output_path else None,
         )
 
 

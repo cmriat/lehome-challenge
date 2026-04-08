@@ -354,6 +354,32 @@ def setup_merge_parser(subparsers: argparse.ArgumentParser) -> argparse.Argument
     return parser
 
 
+def setup_delta_stats_parser(
+    subparsers: argparse.ArgumentParser,
+) -> argparse.ArgumentParser:
+    """Setup parser for 'delta-stats' subcommand."""
+    parser = subparsers.add_parser(
+        "delta-stats",
+        help="Compute per-chunk delta action statistics for delta training",
+    )
+    parser.add_argument(
+        "--dataset_root", type=str, required=True, help="Dataset root directory"
+    )
+    parser.add_argument(
+        "--chunk_size",
+        type=int,
+        default=30,
+        help="Action chunk size (must match training config, default: 30)",
+    )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        default=None,
+        help="Output JSON path (default: <dataset_root>/meta/delta_action_stats.json)",
+    )
+    return parser
+
+
 def setup_eval_parser() -> argparse.ArgumentParser:
     """Setup parser for evaluation script.
 
@@ -482,6 +508,20 @@ def setup_eval_parser() -> argparse.ArgumentParser:
         type=str,
         default="Assets/robots/so101_new_calib.urdf",
         help="URDF path for IK solver (required when --use_ee_pose is set).",
+    )
+
+    # Delta action support
+    parser.add_argument(
+        "--use_delta_actions",
+        action="store_true",
+        help="If set, model outputs delta actions (relative to current state). "
+        "Delta will be added to current observation.state to get absolute joint positions.",
+    )
+    parser.add_argument(
+        "--delta_stats_path",
+        type=str,
+        default=None,
+        help="Path to delta_action_stats.json (default: <dataset_root>/meta/delta_action_stats.json).",
     )
 
     return parser
