@@ -306,14 +306,14 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/f2/90/273b6c7ec78af547694eddeea9e05de771278bd20476525ab930cecaf7d8/tokenizers-0.21.4-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/44/6f/7120676b6d73228c96e17f1f794d8ab046fc910d781c8d151120c3f1569e/toml-0.10.2-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/48/c1/f41d9cb618acccca7df82aaf682f9b49013c9397212cb9f53219e3abac37/tomli-2.4.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
-      - pypi: https://download.pytorch.org/whl/cu128/torch-2.7.0%2Bcu128-cp311-cp311-manylinux_2_28_x86_64.whl
+      - pypi: https://download-r2.pytorch.org/whl/cu128/torch-2.7.0%2Bcu128-cp311-cp311-manylinux_2_28_x86_64.whl
       - pypi: https://download-r2.pytorch.org/whl/cu128/torchaudio-2.7.0%2Bcu128-cp311-cp311-manylinux_2_28_x86_64.whl
       - pypi: https://download.pytorch.org/whl/cu128/torchcodec-0.5%2Bcu128-cp311-cp311-manylinux_2_28_x86_64.whl
       - pypi: https://download-r2.pytorch.org/whl/cu128/torchvision-0.22.0%2Bcu128-cp311-cp311-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/7d/f7/0c48ba992d875521ac761e6e04b0a1750f8150ae42ea26df1852d6a98942/tornado-6.5.1-cp39-abi3-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/16/e1/3079a9ff9b8e11b846c6ac5c8b5bfb7ff225eee721825310c91b3b50304f/tqdm-4.67.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/00/c0/8f5d070730d7836adc9c9b6408dec68c6ced86b304a9b26a14df072a6e8c/traitlets-5.14.3-py3-none-any.whl
-      - pypi: git+https://github.com/huggingface/transformers.git#dcddb970176382c0fcf4521b0c0e6fc15894dfe0
+      - pypi: git+https://github.com/huggingface/transformers.git?branch=fix%2Flerobot_openpi#dcddb970176382c0fcf4521b0c0e6fc15894dfe0
       - pypi: https://files.pythonhosted.org/packages/61/7a/f38385f1b2d5f54221baf1db3d6371dc6eef8041d95abff39576c694e9d9/transforms3d-0.4.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/a7/45/a0d1b0474f280b5191ce6be739533514c9fe4a0315aed75ed58741d536c7/trimesh-4.5.1-py3-none-any.whl
       - pypi: https://download-r2.pytorch.org/whl/triton-3.3.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
@@ -2135,13 +2135,11 @@ packages:
   - daqp==0.7.2 ; sys_platform == 'linux' and platform_machine in 'x86_64,AMD64,aarch64,arm64'
   - dex-retargeting==0.4.6 ; sys_platform == 'linux' and platform_machine in 'x86_64,AMD64'
   requires_python: '>=3.10'
-  editable: true
 - pypi: ./third_party/IsaacLab/source/isaaclab_assets
   name: isaaclab-assets
   version: 0.2.4
   sha256: 1aa939d14ade8fdca7060267ba3d8be702c2cdf997b12916b241ce620c10e80c
   requires_python: '>=3.10'
-  editable: true
 - pypi: ./third_party/IsaacLab/source/isaaclab_mimic
   name: isaaclab-mimic
   version: 1.0.16
@@ -2152,7 +2150,6 @@ packages:
   - robomimic @ git+https://github.com/ARISE-Initiative/robomimic.git@v0.4.0 ; extra == 'robomimic'
   - robomimic @ git+https://github.com/ARISE-Initiative/robomimic.git@v0.4.0 ; extra == 'all'
   requires_python: '>=3.10'
-  editable: true
 - pypi: ./third_party/IsaacLab/source/isaaclab_rl
   name: isaaclab-rl
   version: 0.4.7
@@ -2180,16 +2177,15 @@ packages:
   - gym ; extra == 'rl-games'
   - rsl-rl-lib==3.1.2 ; extra == 'rsl-rl'
   - onnxscript>=0.5 ; extra == 'rsl-rl'
+  - rsl-rl-lib==3.1.2 ; extra == 'all'
   - rl-games @ git+https://github.com/isaac-sim/rl_games.git@python3.11 ; extra == 'all'
   - skrl>=1.4.3 ; extra == 'all'
   - rich ; extra == 'all'
-  - stable-baselines3>=2.6 ; extra == 'all'
-  - onnxscript>=0.5 ; extra == 'all'
-  - gym ; extra == 'all'
   - tqdm ; extra == 'all'
-  - rsl-rl-lib==3.1.2 ; extra == 'all'
+  - gym ; extra == 'all'
+  - onnxscript>=0.5 ; extra == 'all'
+  - stable-baselines3>=2.6 ; extra == 'all'
   requires_python: '>=3.10'
-  editable: true
 - pypi: ./third_party/IsaacLab/source/isaaclab_tasks
   name: isaaclab-tasks
   version: 0.11.12
@@ -2202,7 +2198,6 @@ packages:
   - tensorboard
   - numba
   requires_python: '>=3.10'
-  editable: true
 - pypi: https://pypi.nvidia.com/isaacsim/isaacsim-5.1.0.0-cp311-none-manylinux_2_35_x86_64.whl
   name: isaacsim
   version: 5.1.0.0
@@ -2687,7 +2682,6 @@ packages:
   requires_dist:
   - psutil
   requires_python: '>=3.10'
-  editable: true
 - pypi: https://files.pythonhosted.org/packages/d9/c9/c38f0bfe33527d1b139f67850d6a4c113d42d630cbf4846d02e3d6372d97/lerobot-0.4.3-py3-none-any.whl
   name: lerobot
   version: 0.4.3
@@ -4569,7 +4563,7 @@ packages:
   version: 2.4.1
   sha256: 5a881ab208c0baf688221f8cecc5401bd291d67e38a1ac884d6736cbcd8247e9
   requires_python: '>=3.8'
-- pypi: https://download.pytorch.org/whl/cu128/torch-2.7.0%2Bcu128-cp311-cp311-manylinux_2_28_x86_64.whl
+- pypi: https://download-r2.pytorch.org/whl/cu128/torch-2.7.0%2Bcu128-cp311-cp311-manylinux_2_28_x86_64.whl
   name: torch
   version: 2.7.0+cu128
   sha256: c4bbc0b4be60319ba1cefc90be9557b317f0b3c261eeceb96ca6e0343eec56bf
@@ -4662,7 +4656,7 @@ packages:
   - pytest-mypy-testing ; extra == 'test'
   - pytest>=7.0,<8.2 ; extra == 'test'
   requires_python: '>=3.8'
-- pypi: git+https://github.com/huggingface/transformers.git#dcddb970176382c0fcf4521b0c0e6fc15894dfe0
+- pypi: git+https://github.com/huggingface/transformers.git?branch=fix%2Flerobot_openpi#dcddb970176382c0fcf4521b0c0e6fc15894dfe0
   name: transformers
   version: 4.53.3
   requires_dist:
