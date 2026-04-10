@@ -13,7 +13,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
 # 默认配置
-POLICY_PATH="${POLICY_PATH:-/home/nvidia/maoz/ckpts/lehome_pi05_step62k_reject}"
+POLICY_PATH="${POLICY_PATH:-/home/jovyan/code/vla/temp_datas_v1/pi05_mz/checkpoints/RLinf-Pi05-LEHOME-SFT}"
 DATASET_ROOT="${DATASET_ROOT:-Datasets/example/four_types_merged}"
 DEVICE="${DEVICE:-cpu}"
 NUM_EPISODES="${NUM_EPISODES:-10}"

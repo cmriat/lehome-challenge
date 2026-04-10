@@ -13,6 +13,7 @@ from typing import Optional
 
 import numpy as np
 import pyarrow.parquet as pq
+from tqdm import tqdm
 
 from lerobot.datasets.compute_stats import RunningQuantileStats
 
@@ -69,47 +70,48 @@ def compute_delta_action_stats(
 
     for pf in parquet_files:
         table = pq.read_table(pf)
-        actions = np.array(table["action"].to_pylist(), dtype=np.float32)       # (N, action_dim)
-        states = np.array(table["observation.state"].to_pylist(), dtype=np.float32)  # (N, action_dim)
-        episode_indices = table["episode_index"].to_pylist()
 
-        # Group frame indices by episode
-        episodes = {}
-        for idx, ep_idx in enumerate(episode_indices):
-            if ep_idx not in episodes:
-                episodes[ep_idx] = []
-            episodes[ep_idx].append(idx)
+        # Fast Arrow → numpy: flatten list columns directly (avoids slow to_pylist())
+        actions = table["action"].combine_chunks().flatten().to_numpy(
+            zero_copy_only=False
+        ).reshape(-1, action_dim).astype(np.float32)
+        states = table["observation.state"].combine_chunks().flatten().to_numpy(
+            zero_copy_only=False
+        ).reshape(-1, action_dim).astype(np.float32)
+        episode_indices = table["episode_index"].combine_chunks().to_numpy(zero_copy_only=False)
 
-        for ep_idx in sorted(episodes.keys()):
-            frame_indices = episodes[ep_idx]
-            ep_start = min(frame_indices)
-            ep_end = max(frame_indices) + 1
+        # Find episode boundaries using diff (assumes rows are sorted by episode)
+        ep_change = np.diff(episode_indices, prepend=episode_indices[0] - 1)
+        ep_starts = np.where(ep_change != 0)[0]
+        ep_lengths = np.diff(np.append(ep_starts, len(episode_indices)))
 
-            # For each valid starting frame t0
-            for t0 in range(ep_start, ep_end):
-                chunk_end = min(t0 + chunk_size, ep_end)
-                actual_chunk_len = chunk_end - t0
+        all_deltas = []
+        for i in tqdm(range(len(ep_starts)), desc=f"Processing {pf.name}", unit="ep"):
+            ep_start = ep_starts[i]
+            ep_len = ep_lengths[i]
 
-                # Get state at t0
-                state_t0 = states[t0]  # (action_dim,)
+            # Build clamped index array: shape (ep_len, chunk_size)
+            # indices[t, j] = min(t + j, ep_len - 1), offset by ep_start
+            offsets = np.arange(chunk_size)  # (chunk_size,)
+            t0s = np.arange(ep_len)[:, np.newaxis]  # (ep_len, 1)
+            indices = np.minimum(t0s + offsets, ep_len - 1) + ep_start  # (ep_len, chunk_size)
 
-                # Get action chunk [t0, t0+chunk_size), clamped to episode boundary
-                # If chunk extends beyond episode, the last valid action is repeated
-                # (matching LeRobot's _get_query_indices behavior)
-                chunk_actions = np.zeros((chunk_size, action_dim), dtype=np.float32)
-                chunk_actions[:actual_chunk_len] = actions[t0:chunk_end]
-                if actual_chunk_len < chunk_size:
-                    # Repeat last valid action for padding (LeRobot clamping behavior)
-                    chunk_actions[actual_chunk_len:] = actions[chunk_end - 1]
+            # Gather actions and states via vectorized indexing
+            chunk_actions = actions[indices]  # (ep_len, chunk_size, action_dim)
+            state_t0 = states[ep_start:ep_start + ep_len, np.newaxis, :]  # (ep_len, 1, action_dim)
 
-                # Compute delta: action[t0+i] - state[t0]
-                delta_chunk = chunk_actions - state_t0[np.newaxis, :]  # (chunk_size, action_dim)
+            # Vectorized delta computation for entire episode
+            deltas = chunk_actions - state_t0  # (ep_len, chunk_size, action_dim)
+            all_deltas.append(deltas.reshape(-1, action_dim))
+            total_chunks += ep_len
 
-                # Feed into running stats
-                running_stats.update(delta_chunk)
-                total_chunks += 1
+        # Batch update: single call per parquet file
+        if all_deltas:
+            all_deltas = np.concatenate(all_deltas, axis=0)  # (total_frames * chunk_size, action_dim)
+            running_stats.update(all_deltas)
 
-        logger.info(f"  Processed {pf.name}: {len(episodes)} episodes, {total_chunks} chunks so far")
+        num_episodes = len(ep_starts)
+        logger.info(f"  Processed {pf.name}: {num_episodes} episodes, {total_chunks} chunks so far")
 
     # Get final stats
     stats = running_stats.get_statistics()

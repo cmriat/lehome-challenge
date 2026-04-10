@@ -66,3 +66,7 @@ eval = "python -m scripts.eval"
 dataset = "python scripts/dataset.py"
 dataset-sim = "python -m scripts.dataset_sim"
 replay-standalone = "python -m scripts.replay_standalone"
+
+[tasks.submit]
+cmd = "kjobctl create slurm --first-node-ip --pod-template-label exp={{ name }} -- --gpus-per-task nvidia.com/gpu:8 --chdir $PIXI_PROJECT_ROOT --output kjob_logs/%x.log --error kjob_logs/%x.log {{ script }}"
+args = ["name", "script"]

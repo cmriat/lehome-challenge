@@ -1,24 +1,13 @@
 # ============================================================================
-# Delta Action Training Config for Pi0.5 (8x A800 80G)
+# Joint Action Training Config for Pi0.5 (8x A800 80G)
 # ============================================================================
-# This config trains pi0.5 with per-chunk delta actions.
-# Each action in the chunk is relative to observation.state at the chunk start:
-#   delta_action[t+i] = action[t+i] - observation.state[t]
+# Standard joint-space action training (absolute joint positions).
 #
-# PREREQUISITES:
-#   1. Compute delta stats first:
-#      python -m scripts.dataset delta-stats \
-#        --dataset_root Datasets/example/four_types_merged --chunk_size 30
-#
-# Training command (use train_pi05_delta.py instead of lerobot-train):
+# Training command:
 #   accelerate launch --mixed_precision=bf16 --num_processes=8 \
-#     scripts/train_pi05_delta.py \
-#     --config_path=configs/train_pi05_delta.yaml \
-#     2>&1 | tee logs/train_pi05_delta_$(date +%Y%m%d_%H%M%S).log
-#
-# Evaluation command (add --use_delta_actions):
-#   python -m scripts.eval ... --use_delta_actions \
-#     --dataset_root Datasets/example/four_types_merged
+#     $(which lerobot-train) \
+#     --config_path=configs/train_pi05_joint.yaml \
+#     2>&1 | tee logs/train_pi05_joint_$(date +%Y%m%d_%H%M%S).log
 # ============================================================================
 
 dataset:
@@ -61,12 +50,12 @@ policy:
 
   # Pi0.5 model configuration
   paligemma_variant: gemma_2b          # Vision-language backbone
-  action_expert_variant: gemma_300m   # Action prediction expert
+  action_expert_variant: gemma_300m    # Action prediction expert
   dtype: bfloat16                      # Use bf16 for training
 
   # Action prediction settings
-  chunk_size: 30                       # Predict 30 action steps
-  n_action_steps: 10                   # Execute 30 action steps (must <= chunk_size)
+  chunk_size: 30                       # Default 50, better long-range planning for folding tasks
+  n_action_steps: 10                   # Execute 10 steps then re-predict for higher reactivity
   n_obs_steps: 1                       # Single observation
 
   # Dimension settings (will be padded internally)
@@ -83,7 +72,7 @@ policy:
   freeze_vision_encoder: false
   train_expert_only: false
 
-  # Memory optimization — enable gradient checkpointing to support larger batch size
+  # Memory optimization
   gradient_checkpointing: true
   compile_model: false                 # Disabled: 4B model compile hangs with max-autotune on 8xGPU
 
@@ -106,12 +95,12 @@ policy:
       type: ACTION
       shape: [12]                      # Will be padded to 32
 
-output_dir: outputs/train/pi05_delta
-batch_size: 16                         # Doubled from 8, enabled by gradient_checkpointing
+output_dir: outputs/train/pi05_joint
+batch_size: 16                         # Per-GPU, effective batch = 16 × 8 = 128
 steps: 75000                           # ~30 epochs (397219 frames / 16 batch ≈ 24826 steps/epoch × 30)
 save_freq: 5000
 log_freq: 200
-num_workers: 2                         # Reduced to avoid shared memory exhaustion (8 GPUs × 2 = 16 workers total)
+num_workers: 2                         # Reduced to avoid shared memory exhaustion (8 GPUs × 2 = 16 workers)
 
 # Use custom optimizer settings (override policy preset)
 use_policy_training_preset: false

@@ -22,6 +22,12 @@ import sys
 from functools import wraps
 from pathlib import Path
 
+# Ensure project root is on sys.path so `scripts.*` imports work
+# even when accelerate launches subprocesses with a different CWD.
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
 import numpy as np
 
 from lerobot.utils.import_utils import register_third_party_plugins
