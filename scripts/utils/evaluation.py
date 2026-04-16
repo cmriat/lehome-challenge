@@ -303,11 +303,10 @@ def eval(args: argparse.Namespace, simulation_app: Any) -> None:
     }
 
     if args.policy_type == "lerobot":
-        # LeRobot policy requires policy_path and dataset_root
         if not args.policy_path:
-            raise ValueError("--policy_path is required for lerobot policy type")
+            raise ValueError("--policy_path is required for lerobot-based policy type")
         if not args.dataset_root:
-            raise ValueError("--dataset_root is required for lerobot policy type")
+            raise ValueError("--dataset_root is required for lerobot-based policy type")
         policy_kwargs.update(
             {
                 "policy_path": args.policy_path,
@@ -315,11 +314,15 @@ def eval(args: argparse.Namespace, simulation_app: Any) -> None:
                 "task_description": args.task_description,
             }
         )
-        # Delta action support
         if getattr(args, "use_delta_actions", False):
             policy_kwargs["use_delta_actions"] = True
             policy_kwargs["delta_stats_path"] = getattr(args, "delta_stats_path", None)
             logger.info("Delta action mode enabled for evaluation")
+    elif args.policy_type.startswith("implicit_pi05_"):
+        raise ValueError(
+            "implicit_pi05_v1/v2/v3 eval adapters are deprecated. "
+            "Please use --policy_type lerobot and load the implicit checkpoint via --policy_path."
+        )
     else:
         # For custom policies, pass policy_path as model_path if provided
         if args.policy_path:

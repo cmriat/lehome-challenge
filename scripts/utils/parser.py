@@ -483,7 +483,7 @@ def setup_eval_parser() -> argparse.ArgumentParser:
         default="lerobot",
         help=(
             "Type of policy to use. Available policies are registered in PolicyRegistry. "
-            "Built-in options: 'lerobot', 'custom'. "
+            "Built-in options: 'lerobot', 'custom'. Implicit pi05 v1-v4 checkpoints should also use 'lerobot'. "
             "Participants can register their own policies using @PolicyRegistry.register('my_policy')."
         ),
     )
@@ -522,6 +522,12 @@ def setup_eval_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Path to delta_action_stats.json (default: <dataset_root>/meta/delta_action_stats.json).",
+    )
+    parser.add_argument(
+        "--garment_latent_dim",
+        type=int,
+        default=8,
+        help="Deprecated: implicit latent dimension is now loaded from checkpoint config.",
     )
 
     return parser

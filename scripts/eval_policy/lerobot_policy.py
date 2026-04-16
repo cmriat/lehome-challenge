@@ -9,7 +9,12 @@ from lerobot.datasets.lerobot_dataset import LeRobotDatasetMetadata
 from lerobot.processor.core import TransitionKey
 
 from lehome.utils.logger import get_logger
+from scripts.pi05_implicit_policy import register_pi05_implicit_policy
 from scripts.utils.eval_utils import preprocess_observation
+from scripts.utils.garment_latent_utils import (
+    ImplicitConditioner,
+    load_implicit_conditioning_config,
+)
 from .base_policy import BasePolicy
 from .registry import PolicyRegistry
 
@@ -55,6 +60,7 @@ class LeRobotPolicy(BasePolicy):
         self.device = torch.device(device)
         self.task_description = task_description
         self.use_delta_actions = use_delta_actions
+        register_pi05_implicit_policy()
         
         logger.info(f"Loading LeRobot policy from: {policy_path}")
         
@@ -64,6 +70,7 @@ class LeRobotPolicy(BasePolicy):
         # 2. Load Policy Config
         policy_cfg = PreTrainedConfig.from_pretrained(policy_path, cli_overrides={})
         policy_cfg.pretrained_path = policy_path
+        self.implicit_conditioning = load_implicit_conditioning_config(policy_cfg)
         
         # 3. Filter Metadata (Logic from original create_il_policy)
         # Identify features required by the policy
@@ -191,18 +198,22 @@ class LeRobotPolicy(BasePolicy):
     def _infer_action_dim(self, meta: LeRobotDatasetMetadata, task_description: str) -> int:
         """Infer action dimension from metadata or task description."""
         action_dim = None
-        
+
         # Try metadata 'action' shape
         if meta and hasattr(meta, "features") and "action" in meta.features:
             action_shape = meta.features["action"].get("shape", [])
             if action_shape and len(action_shape) > 0:
                 action_dim = action_shape[0]
-                
+
         # Try metadata 'observation.state' shape (fallback)
-        if (action_dim is None and meta and hasattr(meta, "features") 
-            and "observation.state" in meta.features):
+        if (
+            action_dim is None
+            and meta
+            and hasattr(meta, "features")
+            and "observation.state" in meta.features
+        ):
             state_shape = meta.features["observation.state"].get("shape", [])
-            if action_shape and len(state_shape) > 0:
+            if state_shape and len(state_shape) > 0:
                 action_dim = state_shape[0]
                 
         # Final fallback based on task name (heuristic)
@@ -217,12 +228,19 @@ class LeRobotPolicy(BasePolicy):
     def _filter_observations(self, obs_dict: Dict[str, Any], policy_input_features: Set[str]) -> Dict[str, Any]:
         """Filter observation dictionary to only include features expected by policy."""
         filtered = {}
+        required_keys = set(policy_input_features)
+        if self.implicit_conditioning.enabled:
+            required_keys.add(self.implicit_conditioning.source_image_key)
+            required_keys.add(self.implicit_conditioning.target_state_key)
+        missing_required = [key for key in required_keys if key.startswith("observation.") and key not in obs_dict]
+        if missing_required:
+            raise KeyError(
+                "Missing required observation keys for policy input: " + ", ".join(sorted(missing_required))
+            )
         for key, value in obs_dict.items():
-            # Keep all non-observation keys (like internal env state if any)
             if not key.startswith("observation."):
                 filtered[key] = value
-            # Keep observation features that policy expects
-            elif key in policy_input_features:
+            elif key in required_keys:
                 filtered[key] = value
         return filtered
 
