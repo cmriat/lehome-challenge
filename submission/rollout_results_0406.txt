@@ -1,0 +1,80 @@
+LeHome Challenge 2026 - Local Evaluation Results
+Model: pi05_step62k_reject
+HuggingFace: https://huggingface.co/cat314/lehome_pi05
+Date: 2026-04-06
+Environment: Official Docker (lehome-challenge)
+Config: 120 episodes per garment type (12 garments x 10 episodes), max_steps=600, device=cpu
+
+============================================================
+Top Long (Overall: 61.67%, Avg Return: 161.80 +/- 68.64)
+============================================================
+  Top_Long_Seen_0:   Success Rate = 70.00%,  Avg Return = 152.86
+  Top_Long_Seen_1:   Success Rate = 90.00%,  Avg Return = 124.32
+  Top_Long_Seen_2:   Success Rate = 70.00%,  Avg Return = 155.77
+  Top_Long_Seen_3:   Success Rate = 50.00%,  Avg Return = 178.69
+  Top_Long_Seen_4:   Success Rate = 70.00%,  Avg Return = 145.37
+  Top_Long_Seen_5:   Success Rate = 50.00%,  Avg Return = 188.32
+  Top_Long_Seen_6:   Success Rate = 20.00%,  Avg Return = 192.67
+  Top_Long_Seen_7:   Success Rate = 60.00%,  Avg Return = 159.98
+  Top_Long_Seen_8:   Success Rate = 60.00%,  Avg Return = 190.18
+  Top_Long_Seen_9:   Success Rate = 90.00%,  Avg Return = 133.55
+  Top_Long_Unseen_0: Success Rate = 90.00%,  Avg Return = 155.05
+  Top_Long_Unseen_1: Success Rate = 20.00%,  Avg Return = 164.81
+
+============================================================
+Top Short (Overall: 55.83%, Avg Return: 175.08 +/- 77.90)
+============================================================
+  Top_Short_Seen_0:   Success Rate = 70.00%,  Avg Return = 143.82
+  Top_Short_Seen_1:   Success Rate = 90.00%,  Avg Return = 130.56
+  Top_Short_Seen_2:   Success Rate = 50.00%,  Avg Return = 172.76
+  Top_Short_Seen_3:   Success Rate = 70.00%,  Avg Return = 250.89
+  Top_Short_Seen_4:   Success Rate = 70.00%,  Avg Return = 193.42
+  Top_Short_Seen_5:   Success Rate = 80.00%,  Avg Return = 141.83
+  Top_Short_Seen_6:   Success Rate = 80.00%,  Avg Return = 141.34
+  Top_Short_Seen_7:   Success Rate = 60.00%,  Avg Return = 143.83
+  Top_Short_Seen_8:   Success Rate = 40.00%,  Avg Return = 166.59
+  Top_Short_Seen_9:   Success Rate = 20.00%,  Avg Return = 176.84
+  Top_Short_Unseen_0: Success Rate = 0.00%,   Avg Return = 164.78
+  Top_Short_Unseen_1: Success Rate = 40.00%,  Avg Return = 274.34
+
+============================================================
+Pant Long (Overall: 57.50%, Avg Return: 138.10 +/- 66.69)
+============================================================
+  Pant_Long_Seen_0:   Success Rate = 50.00%,  Avg Return = 134.89
+  Pant_Long_Seen_1:   Success Rate = 80.00%,  Avg Return = 138.98
+  Pant_Long_Seen_2:   Success Rate = 80.00%,  Avg Return = 142.52
+  Pant_Long_Seen_3:   Success Rate = 40.00%,  Avg Return = 146.61
+  Pant_Long_Seen_4:   Success Rate = 70.00%,  Avg Return = 121.39
+  Pant_Long_Seen_5:   Success Rate = 50.00%,  Avg Return = 185.72
+  Pant_Long_Seen_6:   Success Rate = 50.00%,  Avg Return = 122.69
+  Pant_Long_Seen_7:   Success Rate = 50.00%,  Avg Return = 170.57
+  Pant_Long_Seen_8:   Success Rate = 40.00%,  Avg Return = 131.73
+  Pant_Long_Seen_9:   Success Rate = 50.00%,  Avg Return = 148.89
+  Pant_Long_Unseen_0: Success Rate = 90.00%,  Avg Return = 97.01
+  Pant_Long_Unseen_1: Success Rate = 40.00%,  Avg Return = 116.19
+
+============================================================
+Pant Short (Overall: 85.00%, Avg Return: 148.21 +/- 92.17)
+============================================================
+  Pant_Short_Seen_0:   Success Rate = 80.00%,  Avg Return = 173.76
+  Pant_Short_Seen_1:   Success Rate = 90.00%,  Avg Return = 117.72
+  Pant_Short_Seen_2:   Success Rate = 100.00%, Avg Return = 103.01
+  Pant_Short_Seen_3:   Success Rate = 100.00%, Avg Return = 115.01
+  Pant_Short_Seen_4:   Success Rate = 100.00%, Avg Return = 98.06
+  Pant_Short_Seen_5:   Success Rate = 100.00%, Avg Return = 122.19
+  Pant_Short_Seen_6:   Success Rate = 80.00%,  Avg Return = 173.00
+  Pant_Short_Seen_7:   Success Rate = 80.00%,  Avg Return = 186.11
+  Pant_Short_Seen_8:   Success Rate = 100.00%, Avg Return = 136.47
+  Pant_Short_Seen_9:   Success Rate = 70.00%,  Avg Return = 255.25
+  Pant_Short_Unseen_0: Success Rate = 20.00%,  Avg Return = 189.97
+  Pant_Short_Unseen_1: Success Rate = 100.00%, Avg Return = 107.91
+
+============================================================
+Overall Summary
+============================================================
+  Total Episodes: 480
+  Top Long:   61.67% (120 episodes)
+  Top Short:  55.83% (120 episodes)
+  Pant Long:  57.50% (120 episodes)
+  Pant Short: 85.00% (120 episodes)
+  Overall Success Rate: 65.00%

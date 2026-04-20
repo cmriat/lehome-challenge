@@ -11,7 +11,7 @@
 - **HuggingFace Repo**: https://huggingface.co/cat314/lehome_pi05
 - **Checkpoint**: pi05_step75k
 
-## Local Evaluation Results (Docker)
+## Local Evaluation Results
 
 | Garment Type | Episodes | Success Rate | Avg Return |
 |---|---|---|---|
@@ -61,7 +61,7 @@ for garment in top_long top_short pant_long pant_short; do
         --policy_path checkpoints/pi05 \
         --garment_type "$garment" \
         --dataset_root Datasets/example/${garment}_merged \
-        --num_episodes 20 \
+        --num_episodes 10 \
         --max_steps 600 \
         --task LeHome-BiSO101-Direct-Garment-v2 \
         --task_description "fold the garment on the table" \

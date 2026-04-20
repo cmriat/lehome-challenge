@@ -46,9 +46,6 @@ policy:
     observation.state:
       type: STATE
       shape: [20]
-    observation.garment_type_prob:
-      type: STATE
-      shape: [4]
     observation.images.top_rgb:
       type: VISUAL
       shape: [3, 224, 224]

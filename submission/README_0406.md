@@ -9,17 +9,17 @@
 
 - **Type**: LeRobot Policy (pi05)
 - **HuggingFace Repo**: https://huggingface.co/cat314/lehome_pi05
-- **Checkpoint**: pi05_step75k
+- **Checkpoint**: pi05_step62k with reject sampling
 
 ## Local Evaluation Results (Docker)
 
 | Garment Type | Episodes | Success Rate | Avg Return |
 |---|---|---|---|
-| Top Long | 240 | 82.08% | 142.03 +/- 17.10 |
-| Top Short | 240 | 71.67% | 170.49 +/- 36.46 |
-| Pant Long | 240 | 69.58% | 126.27 +/- 12.43 |
-| Pant Short | 240 | 87.08% | 144.84 +/- 21.46 |
-| **Overall** | **960** | **77.60%** | **145.91** |
+| Top Long | 120 | 61.67% | 161.80 +/- 68.64 |
+| Top Short | 120 | 55.83% | 175.08 +/- 77.90 |
+| Pant Long | 120 | 57.50% | 138.10 +/- 66.69 |
+| Pant Short | 120 | 85.00% | 148.21 +/- 92.17 |
+| **Overall** | **480** | **65.00%** | **155.80** |
 
 ## How to Evaluate
 
@@ -61,7 +61,7 @@ for garment in top_long top_short pant_long pant_short; do
         --policy_path checkpoints/pi05 \
         --garment_type "$garment" \
         --dataset_root Datasets/example/${garment}_merged \
-        --num_episodes 20 \
+        --num_episodes 10 \
         --max_steps 600 \
         --task LeHome-BiSO101-Direct-Garment-v2 \
         --task_description "fold the garment on the table" \

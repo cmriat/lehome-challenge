@@ -77,6 +77,8 @@ class LeRobotPolicy(BasePolicy):
         self.input_features: Optional[Set[str]] = None
         if hasattr(policy_cfg, "input_features"):
             self.input_features = set(policy_cfg.input_features.keys())
+            train_only_targets = self._get_train_only_observation_targets(policy_cfg)
+            self.input_features -= train_only_targets
             self._filter_metadata(meta, self.input_features)
 
         # 4. Create Policy
@@ -119,8 +121,8 @@ class LeRobotPolicy(BasePolicy):
         Returns:
             action: Numpy array of action values (un-normalized, absolute joint positions).
         """
-        # Save current state BEFORE filtering (needed for delta→absolute conversion)
-        current_state = observation.get("observation.state") if self.use_delta_actions else None
+        # Save current state BEFORE filtering for debug and optional delta→absolute conversion
+        current_state = observation.get("observation.state")
 
         # 1. Filter observations (keep only what the policy needs)
         if self.input_features:
@@ -149,6 +151,14 @@ class LeRobotPolicy(BasePolicy):
     # --------------------------------------------------------------------------
     # Internal Helper Methods
     # --------------------------------------------------------------------------
+
+    def _get_train_only_observation_targets(self, policy_cfg: PreTrainedConfig) -> Set[str]:
+        """Return observation keys used only as training supervision targets."""
+        targets: Set[str] = set()
+        type_target_key = getattr(policy_cfg, "type_target_key", None)
+        if isinstance(type_target_key, str) and type_target_key.startswith("observation."):
+            targets.add(type_target_key)
+        return targets
 
     def _setup_delta_actions(self, dataset_root: str, delta_stats_path: Optional[str]) -> None:
         """Load delta stats and replace action stats in the postprocessor."""

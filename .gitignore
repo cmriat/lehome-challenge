@@ -79,3 +79,5 @@ tests/
 .spec-workflow
 .vscode
 kjob_logs/
+
+ckpts/

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from typing import Any
+import os
 
 import torch
 import torch.nn.functional as F
@@ -89,13 +90,100 @@ class PI05ImplicitPolicy(PI05Policy):
         torch.save({'train_step': self._train_step}, str(save_directory / 'implicit_aux_state.pt'))
 
     @classmethod
-    def from_pretrained(cls, pretrained_name_or_path, *args, config=None, **kwargs):
-        model = super().from_pretrained(pretrained_name_or_path, *args, config=config, **kwargs)
-        import os
-        aux_path = os.path.join(str(pretrained_name_or_path), 'implicit_aux_state.pt')
+    def from_pretrained(
+        cls,
+        pretrained_name_or_path,
+        *args,
+        config=None,
+        force_download: bool = False,
+        resume_download: bool | None = None,
+        proxies: dict | None = None,
+        token: str | bool | None = None,
+        cache_dir: str | os.PathLike | None = None,
+        local_files_only: bool = False,
+        revision: str | None = None,
+        strict: bool = False,
+        **kwargs,
+    ):
+        print(
+            "The PI05 model is a direct port of the OpenPI implementation. \n"
+            "This implementation follows the original OpenPI structure for compatibility. \n"
+            "Original implementation: https://github.com/Physical-Intelligence/openpi"
+        )
+        if pretrained_name_or_path is None:
+            raise ValueError("pretrained_name_or_path is required")
+
+        if config is None:
+            config = PreTrainedConfig.from_pretrained(
+                pretrained_name_or_path=pretrained_name_or_path,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                token=token,
+                cache_dir=cache_dir,
+                local_files_only=local_files_only,
+                revision=revision,
+                **kwargs,
+            )
+
+        model = cls(config, **kwargs)
+        checkpoint_path = str(pretrained_name_or_path)
+        state_path = os.path.join(checkpoint_path, "model.safetensors")
+
+        print(f"Loading model from: {pretrained_name_or_path}")
+        if not os.path.exists(state_path):
+            raise FileNotFoundError(f"model.safetensors not found: {state_path}")
+
+        from safetensors.torch import load_file
+
+        original_state_dict = load_file(state_path)
+        print("✓ Loaded state dict from model.safetensors")
+
+        fixed_state_dict = model._fix_pytorch_state_dict_keys(original_state_dict, model.config)
+        implicit_prefixes = (
+            "implicit_conditioner.",
+            "type_head.",
+            "task_gate_head.",
+            "task_bias_head.",
+        )
+        remapped_state_dict = {}
+        remap_count = 0
+        for key, value in fixed_state_dict.items():
+            if key.startswith("model.") or key.startswith(implicit_prefixes):
+                remapped_state_dict[key] = value
+            else:
+                new_key = f"model.{key}"
+                remapped_state_dict[new_key] = value
+                remap_count += 1
+                if remap_count <= 10:
+                    print(f"Remapped: {key} -> {new_key}")
+
+        if remap_count > 0:
+            print(f"Remapped {remap_count} state dict keys")
+
+        missing_keys, unexpected_keys = model.load_state_dict(remapped_state_dict, strict=strict)
+        if missing_keys:
+            print(f"Missing keys when loading state dict: {len(missing_keys)} keys")
+            for key in missing_keys[:5]:
+                print(f"  - {key}")
+            if len(missing_keys) > 5:
+                print(f"  ... and {len(missing_keys) - 5} more")
+        if unexpected_keys:
+            print(f"Unexpected keys when loading state dict: {len(unexpected_keys)} keys")
+            for key in unexpected_keys[:5]:
+                print(f"  - {key}")
+            if len(unexpected_keys) > 5:
+                print(f"  ... and {len(unexpected_keys) - 5} more")
+        if not missing_keys and not unexpected_keys:
+            print("All keys loaded successfully!")
+
+        aux_path = os.path.join(checkpoint_path, 'implicit_aux_state.pt')
         if os.path.exists(aux_path):
             state = torch.load(aux_path, map_location='cpu')
             model._train_step = int(state.get('train_step', 0))
+
+        model.to(config.device)
+        model.eval()
         return model
 
     config_class = PI05ImplicitConfig
