@@ -10,7 +10,7 @@
 
 dataset:
   repo_id: lehome_competition
-  root: Datasets/example/four_types_merged
+  root: Datasets/example/train_ds_v3
 
 policy:
   type: pi05
@@ -25,7 +25,7 @@ policy:
 
   # Action prediction settings
   chunk_size: 30                       # Predict 30 action steps
-  n_action_steps: 30                   # Execute 30 action steps (must <= chunk_size)
+  n_action_steps: 10                   # Execute 30 action steps (must <= chunk_size)
   n_obs_steps: 1                       # Single observation
 
   # Dimension settings (will be padded internally)

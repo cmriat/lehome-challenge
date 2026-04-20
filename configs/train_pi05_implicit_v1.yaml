@@ -1,6 +1,6 @@
 dataset:
   repo_id: lehome_competition
-  root: Datasets/example/four_types_merged_reject
+  root: Datasets/example/train_ds_v3
   video_backend: pyav
 
 policy:

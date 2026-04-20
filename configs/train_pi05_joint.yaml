@@ -12,7 +12,7 @@
 
 dataset:
   repo_id: lehome_competition
-  root: Datasets/example/four_types_merged_reject
+  root: Datasets/example/train_ds_v3
   video_backend: pyav
 
   # Light color augmentation only — no spatial transforms (harmful for manipulation tasks)
@@ -100,7 +100,7 @@ batch_size: 16                         # Per-GPU, effective batch = 16 × 8 = 12
 steps: 75000                           # ~30 epochs (397219 frames / 16 batch ≈ 24826 steps/epoch × 30)
 save_freq: 5000
 log_freq: 200
-num_workers: 2                         # Reduced to avoid shared memory exhaustion (8 GPUs × 2 = 16 workers)
+num_workers: 8                         # Reduced to avoid shared memory exhaustion (8 GPUs × 2 = 16 workers)
 
 # Use custom optimizer settings (override policy preset)
 use_policy_training_preset: false
