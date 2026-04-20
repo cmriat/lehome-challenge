@@ -483,7 +483,8 @@ def setup_eval_parser() -> argparse.ArgumentParser:
         default="lerobot",
         help=(
             "Type of policy to use. Available policies are registered in PolicyRegistry. "
-            "Built-in options: 'lerobot', 'custom'. Implicit pi05 v1-v4 checkpoints should also use 'lerobot'. "
+            "Built-in options: 'lerobot', 'pi05_implicit', 'custom'. "
+            "Use 'lerobot' for standard LeRobot checkpoints and 'pi05_implicit' for implicit pi05 v1-v4 checkpoints. "
             "Participants can register their own policies using @PolicyRegistry.register('my_policy')."
         ),
     )

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Literal
+from typing import Any, Dict, Literal
 
 import numpy as np
 import torch
@@ -15,7 +15,7 @@ def append_condition_to_state(state: np.ndarray, condition: np.ndarray) -> np.nd
 
 
 DEFAULT_LATENT_DIM = 8
-ImplicitVariant = Literal["v1", "v2", "v3"]
+ImplicitVariant = Literal["v1", "v2", "v3", "v4"]
 
 
 @dataclass
@@ -55,6 +55,13 @@ class GarmentLatentEncoder(nn.Module):
         return self.proj(h)
 
 
+def resolve_implicit_variant(policy_cfg: Any) -> str | None:
+    raw = getattr(policy_cfg, "implicit_conditioning", None) or {}
+    if not raw:
+        return None
+    return raw.get("variant") if isinstance(raw, dict) else getattr(raw, "variant", None)
+
+
 class ImplicitConditioner(nn.Module):
     def __init__(self, config: ImplicitConditioningConfig):
         super().__init__()
@@ -62,7 +69,7 @@ class ImplicitConditioner(nn.Module):
         self.encoder = GarmentLatentEncoder(latent_dim=config.latent_dim)
         if config.variant == "v2":
             self.fusion_head = nn.Linear(config.latent_dim, config.latent_dim)
-        elif config.variant == "v3":
+        elif config.variant in {"v3", "v4"}:
             self.fusion_gate = nn.Sequential(nn.Linear(config.latent_dim, config.latent_dim), nn.Sigmoid())
             self.fusion_bias = nn.Linear(config.latent_dim, config.latent_dim)
 
@@ -70,7 +77,7 @@ class ImplicitConditioner(nn.Module):
         latent = self.encoder(images)
         if self.config.variant == "v2":
             latent = latent + self.fusion_head(latent)
-        elif self.config.variant == "v3":
+        elif self.config.variant in {"v3", "v4"}:
             latent = latent * self.fusion_gate(latent) + self.fusion_bias(latent)
         return latent
 

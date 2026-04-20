@@ -25,7 +25,7 @@ DEFAULT_PARTICLE_CFG_PATH="source/lehome/lehome/tasks/bedroom/config_file/partic
 DEFAULT_LOG_DIR="logs/eval_implicit"
 DEFAULT_VIDEO_DIR="videos/eval_implicit"
 
-POLICY_PATH="/home/maoz/code/lehome-challenge/ckpts/pi05_implicit_v1/step50k"
+POLICY_PATH="/home/maoz/code/lehome-challenge/ckpts/pi05_implicit_v4/step50k"
 GPU_CSV="${GPUS:-$DEFAULT_GPUS}"
 DATASET_ROOT="${DATASET_ROOT:-$DEFAULT_DATASET_ROOT}"
 DEVICE="${DEVICE:-$DEFAULT_DEVICE}"
@@ -273,7 +273,7 @@ launch_eval() {
         export PATH="$ZENITY_STUB_DIR:$PATH"
         CMD=(
             pixi run python -m scripts.eval
-            --policy_type lerobot
+            --policy_type pi05_implicit
             --policy_path "$POLICY_PATH"
             --dataset_root "$DATASET_ROOT"
             --garment_type "$garment"

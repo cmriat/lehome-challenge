@@ -7,7 +7,7 @@ policy:
   type: pi05_implicit
   implicit_conditioning:
     enabled: true
-    variant: v3
+    variant: v4
     latent_dim: 12
     source_image_key: observation.images.top_rgb
     target_state_key: observation.state

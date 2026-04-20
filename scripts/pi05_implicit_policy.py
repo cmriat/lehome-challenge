@@ -199,7 +199,7 @@ class PI05ImplicitPolicy(PI05Policy):
         self.split_latent = config.split_latent
         self.z_task_dim = config.z_task_dim
         self.z_type_dim = config.z_type_dim
-        self.weak_coupling = getattr(config, 'weak_coupling', True)
+        self.weak_coupling = config.weak_coupling
         self.weak_coupling_apply_at_inference = config.weak_coupling_apply_at_inference
         self.weak_coupling_gate_bias_init = config.weak_coupling_gate_bias_init
         self.weak_coupling_residual = config.weak_coupling_residual

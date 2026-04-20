@@ -302,11 +302,11 @@ def eval(args: argparse.Namespace, simulation_app: Any) -> None:
         "device": device,
     }
 
-    if args.policy_type == "lerobot":
+    if args.policy_type in {"lerobot", "pi05_implicit"}:
         if not args.policy_path:
-            raise ValueError("--policy_path is required for lerobot-based policy type")
+            raise ValueError(f"--policy_path is required for {args.policy_type}-based policy type")
         if not args.dataset_root:
-            raise ValueError("--dataset_root is required for lerobot-based policy type")
+            raise ValueError(f"--dataset_root is required for {args.policy_type}-based policy type")
         policy_kwargs.update(
             {
                 "policy_path": args.policy_path,
@@ -321,7 +321,7 @@ def eval(args: argparse.Namespace, simulation_app: Any) -> None:
     elif args.policy_type.startswith("implicit_pi05_"):
         raise ValueError(
             "implicit_pi05_v1/v2/v3 eval adapters are deprecated. "
-            "Please use --policy_type lerobot and load the implicit checkpoint via --policy_path."
+            "Please use --policy_type pi05_implicit and load the implicit checkpoint via --policy_path."
         )
     else:
         # For custom policies, pass policy_path as model_path if provided

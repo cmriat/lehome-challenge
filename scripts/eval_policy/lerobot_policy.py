@@ -9,12 +9,8 @@ from lerobot.datasets.lerobot_dataset import LeRobotDatasetMetadata
 from lerobot.processor.core import TransitionKey
 
 from lehome.utils.logger import get_logger
-from scripts.pi05_implicit_policy import register_pi05_implicit_policy
 from scripts.utils.eval_utils import preprocess_observation
-from scripts.utils.garment_latent_utils import (
-    ImplicitConditioner,
-    load_implicit_conditioning_config,
-)
+from scripts.utils.garment_latent_utils import load_implicit_conditioning_config
 from .base_policy import BasePolicy
 from .registry import PolicyRegistry
 
@@ -60,8 +56,7 @@ class LeRobotPolicy(BasePolicy):
         self.device = torch.device(device)
         self.task_description = task_description
         self.use_delta_actions = use_delta_actions
-        register_pi05_implicit_policy()
-        
+
         logger.info(f"Loading LeRobot policy from: {policy_path}")
         
         # 1. Load Metadata
@@ -71,6 +66,12 @@ class LeRobotPolicy(BasePolicy):
         policy_cfg = PreTrainedConfig.from_pretrained(policy_path, cli_overrides={})
         policy_cfg.pretrained_path = policy_path
         self.implicit_conditioning = load_implicit_conditioning_config(policy_cfg)
+        self.policy_config_type = getattr(policy_cfg, "type", None) or getattr(policy_cfg.__class__, "type", None)
+        self.policy_config_class = policy_cfg.__class__.__name__
+        logger.info(
+            "Policy config resolved: "
+            f"registry=lerobot, config_type={self.policy_config_type}, config_class={self.policy_config_class}"
+        )
         
         # 3. Filter Metadata (Logic from original create_il_policy)
         # Identify features required by the policy
@@ -103,8 +104,8 @@ class LeRobotPolicy(BasePolicy):
         # 6. Infer Action Dimension (Logic from original run_evaluation_loop)
         self.action_dim = self._infer_action_dim(meta, task_description)
         logger.info(
-            f"LeRobotPolicy initialized. Action dim: {self.action_dim}, "
-            f"delta_actions: {self.use_delta_actions}"
+            f"LeRobotPolicy initialized. config_type={self.policy_config_type}, "
+            f"action_dim={self.action_dim}, delta_actions={self.use_delta_actions}"
         )
 
     def reset(self):
