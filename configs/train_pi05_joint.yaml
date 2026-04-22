@@ -96,18 +96,18 @@ policy:
       shape: [12]                      # Will be padded to 32
 
 output_dir: outputs/train/pi05_joint
-batch_size: 16                         # Per-GPU, effective batch = 16 × 8 = 128
-steps: 75000                           # ~30 epochs (397219 frames / 16 batch ≈ 24826 steps/epoch × 30)
+batch_size: 16                         # Per-GPU, effective batch = 16 × 16 = 256 on 2 nodes
+steps: 60000                           # Keep total training samples comparable to 8-GPU bs16 runs
 save_freq: 5000
 log_freq: 200
-num_workers: 8                         # Reduced to avoid shared memory exhaustion (8 GPUs × 2 = 16 workers)
+num_workers: 8
 
 # Use custom optimizer settings (override policy preset)
 use_policy_training_preset: false
 
 optimizer:
   type: adamw
-  lr: 5e-5                             # sqrt scaling: 2.5e-5 × sqrt(128/32) for effective batch 128
+  lr: 3e-5                             # Keep LR fixed first when scaling to 16 GPUs
   betas: [0.9, 0.95]                   # Pi0.5 defaults
   eps: 1e-8
   weight_decay: 0.01                   # Pi0.5 default
@@ -115,10 +115,10 @@ optimizer:
 
 scheduler:
   type: cosine_decay_with_warmup
-  num_warmup_steps: 2000               # ~2 epochs warmup, balanced between fast ramp-up and stability
-  num_decay_steps: 112500              # 1.5x of total steps — LR stays higher longer, avoids premature decay
-  peak_lr: 5e-5                        # Match optimizer lr
-  decay_lr: 5e-6                       # 1/10 of peak
+  num_warmup_steps: 1200               # ~2% warmup over 60K steps
+  num_decay_steps: 72000               # 1.2x of total steps to avoid overly aggressive LR decay
+  peak_lr: 3e-5                        # Match optimizer lr
+  decay_lr: 3e-6                       # 1/10 of peak
 
 wandb:
   enable: true

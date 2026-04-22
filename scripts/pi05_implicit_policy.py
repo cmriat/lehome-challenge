@@ -4,8 +4,14 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 import os
 
+import packaging
+import safetensors
 import torch
 import torch.nn.functional as F
+from huggingface_hub import hf_hub_download
+from huggingface_hub.constants import SAFETENSORS_SINGLE_FILE
+from huggingface_hub.errors import HfHubHTTPError
+from safetensors.torch import load_file
 from torch import Tensor, nn
 
 from lerobot.configs.policies import PreTrainedConfig
@@ -127,17 +133,50 @@ class PI05ImplicitPolicy(PI05Policy):
             )
 
         model = cls(config, **kwargs)
-        checkpoint_path = str(pretrained_name_or_path)
-        state_path = os.path.join(checkpoint_path, "model.safetensors")
+        model_id = str(pretrained_name_or_path)
 
         print(f"Loading model from: {pretrained_name_or_path}")
-        if not os.path.exists(state_path):
-            raise FileNotFoundError(f"model.safetensors not found: {state_path}")
+        if os.path.isdir(model_id):
+            state_path = os.path.join(model_id, SAFETENSORS_SINGLE_FILE)
+            aux_path = os.path.join(model_id, 'implicit_aux_state.pt')
+            if not os.path.exists(state_path):
+                raise FileNotFoundError(f"{SAFETENSORS_SINGLE_FILE} not found: {state_path}")
+        else:
+            try:
+                state_path = hf_hub_download(
+                    repo_id=model_id,
+                    filename=SAFETENSORS_SINGLE_FILE,
+                    revision=revision,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    resume_download=resume_download,
+                    token=token,
+                    local_files_only=local_files_only,
+                )
+            except HfHubHTTPError as e:
+                raise FileNotFoundError(
+                    f"{SAFETENSORS_SINGLE_FILE} not found on the HuggingFace Hub in {model_id}"
+                ) from e
 
-        from safetensors.torch import load_file
+            aux_path = None
+            try:
+                aux_path = hf_hub_download(
+                    repo_id=model_id,
+                    filename='implicit_aux_state.pt',
+                    revision=revision,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    resume_download=resume_download,
+                    token=token,
+                    local_files_only=local_files_only,
+                )
+            except HfHubHTTPError:
+                pass
 
         original_state_dict = load_file(state_path)
-        print("✓ Loaded state dict from model.safetensors")
+        print(f"✓ Loaded state dict from {state_path}")
 
         fixed_state_dict = model._fix_pytorch_state_dict_keys(original_state_dict, model.config)
         implicit_prefixes = (
@@ -177,10 +216,37 @@ class PI05ImplicitPolicy(PI05Policy):
         if not missing_keys and not unexpected_keys:
             print("All keys loaded successfully!")
 
-        aux_path = os.path.join(checkpoint_path, 'implicit_aux_state.pt')
-        if os.path.exists(aux_path):
+        if aux_path and os.path.exists(aux_path):
             state = torch.load(aux_path, map_location='cpu')
             model._train_step = int(state.get('train_step', 0))
+
+        missing_implicit_keys = [
+            key for key in missing_keys if key.startswith(("implicit_conditioner.", "type_head.", "task_gate_head.", "task_bias_head."))
+        ]
+        unexpected_implicit_keys = [
+            key for key in unexpected_keys if key.startswith(("implicit_conditioner.", "type_head.", "task_gate_head.", "task_bias_head."))
+        ]
+        if missing_implicit_keys:
+            print(f"Implicit-only keys missing from checkpoint (expected for base pi05 init): {len(missing_implicit_keys)} keys")
+        if unexpected_implicit_keys:
+            print(f"Unexpected implicit-only keys in checkpoint: {len(unexpected_implicit_keys)} keys")
+
+        non_implicit_missing = [key for key in missing_keys if key not in missing_implicit_keys]
+        non_implicit_unexpected = [key for key in unexpected_keys if key not in unexpected_implicit_keys]
+        if strict and (non_implicit_missing or non_implicit_unexpected):
+            raise RuntimeError(
+                f"Non-implicit state dict mismatch. Missing: {len(non_implicit_missing)}, unexpected: {len(non_implicit_unexpected)}"
+            )
+
+        if not strict and missing_implicit_keys and len(missing_keys) == len(missing_implicit_keys) and not unexpected_keys:
+            print("Proceeding with base pi05 weights; implicit-specific layers will stay randomly initialized.")
+
+        if not strict and (non_implicit_missing or non_implicit_unexpected):
+            print(f"Non-implicit mismatches remain. Missing: {len(non_implicit_missing)}, unexpected: {len(non_implicit_unexpected)}")
+            for key in non_implicit_missing[:5]:
+                print(f"  missing: {key}")
+            for key in non_implicit_unexpected[:5]:
+                print(f"  unexpected: {key}")
 
         model.to(config.device)
         model.eval()

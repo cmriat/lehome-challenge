@@ -1,10 +1,10 @@
 #!/bin/zsh
 # Pi0.5 Joint Action Training Script for LeHome Challenge
-# Usage: pixi run submit joint scripts/train_pi05_joint.sh [NUM_GPUS]
+# Usage: pixi run submit joint "scripts_mz/train_pi05_joint.sh [NUM_GPUS]"
 #
 # Examples:
-#   pixi run submit joint scripts/train_pi05_joint.sh        # 8 GPUs (default)
-#   pixi run submit joint scripts/train_pi05_joint.sh 4      # 4 GPUs
+#   pixi run submit joint "scripts_mz/train_pi05_joint.sh"    # 1 node, 8 GPUs (default)
+#   pixi run submit joint "scripts_mz/train_pi05_joint.sh 4"  # 1 node, 4 GPUs
 
 set -uo pipefail
 
