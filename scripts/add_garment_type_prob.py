@@ -43,11 +43,10 @@ def parse_args() -> argparse.Namespace:
 
 def load_episode_prob_map(episode_class_path: Path) -> dict[int, list[float]]:
     with episode_class_path.open("r", encoding="utf-8") as f:
-        payload = json.load(f)
+        classes = json.load(f)
 
-    classes = payload.get("classes")
     if not isinstance(classes, dict):
-        raise ValueError(f"Invalid classes field in {episode_class_path}")
+        raise ValueError(f"Invalid episode class mapping in {episode_class_path}")
 
     episode_prob_map: dict[int, list[float]] = {}
     for episode_key, class_name in classes.items():
