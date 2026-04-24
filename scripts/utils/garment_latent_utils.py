@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from typing import Any, Dict, Literal
 
 import numpy as np
+import timm
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 
@@ -15,7 +17,7 @@ def append_condition_to_state(state: np.ndarray, condition: np.ndarray) -> np.nd
 
 
 DEFAULT_LATENT_DIM = 8
-ImplicitVariant = Literal["v1", "v2", "v3", "v4"]
+ImplicitVariant = Literal["v1", "v2", "v3", "v4", "v5"]
 
 
 @dataclass
@@ -25,11 +27,16 @@ class ImplicitConditioningConfig:
     latent_dim: int = DEFAULT_LATENT_DIM
     source_image_key: str = "observation.images.top_rgb"
     target_state_key: str = "observation.state"
+    anchor_encoder_name_or_path: str = "vit_base_patch14_dinov2.lvd142m"
+    anchor_pooling: Literal["cls", "mean"] = "mean"
+    anchor_feat_dim: int = 768
+    anchor_proj_dim: int = DEFAULT_LATENT_DIM
+    freeze_anchor_encoder: bool = True
+    type_as_instruction: bool = False
+    state_concat_enabled: bool = True
 
 
 class GarmentLatentEncoder(nn.Module):
-    """Minimal visual encoder that produces an implicit garment latent from top RGB observations."""
-
     def __init__(self, latent_dim: int = DEFAULT_LATENT_DIM):
         super().__init__()
         self.backbone = nn.Sequential(
@@ -55,23 +62,80 @@ class GarmentLatentEncoder(nn.Module):
         return self.proj(h)
 
 
-def resolve_implicit_variant(policy_cfg: Any) -> str | None:
-    raw = getattr(policy_cfg, "implicit_conditioning", None) or {}
-    if not raw:
-        return None
-    return raw.get("variant") if isinstance(raw, dict) else getattr(raw, "variant", None)
+class PretrainedGarmentEncoder(nn.Module):
+    def __init__(self, config: ImplicitConditioningConfig):
+        super().__init__()
+        self.config = config
+        self.encoder = timm.create_model(
+            config.anchor_encoder_name_or_path,
+            pretrained=True,
+            num_classes=0,
+            global_pool="",
+        )
+        if config.freeze_anchor_encoder:
+            self.encoder.requires_grad_(False)
+        self.proj = nn.Linear(config.anchor_feat_dim, config.anchor_proj_dim)
+
+    def _pool_features(self, features: torch.Tensor) -> torch.Tensor:
+        if features.ndim == 4:
+            features = features.flatten(2).transpose(1, 2)
+        if features.ndim == 3:
+            return features[:, 0] if self.config.anchor_pooling == "cls" else features.mean(dim=1)
+        if features.ndim == 2:
+            return features
+        raise ValueError(f"Unsupported pretrained feature shape: {tuple(features.shape)}")
+
+    def forward(self, images: Dict[str, torch.Tensor]) -> torch.Tensor:
+        top_key = self.config.source_image_key
+        if top_key not in images:
+            raise ValueError(f"{top_key} is required for garment latent encoding")
+        value = images[top_key]
+        if value.ndim == 3:
+            value = value.unsqueeze(0)
+        x = value.float()
+        expected_size = getattr(self.encoder.patch_embed, "img_size", None)
+        if expected_size is not None:
+            if isinstance(expected_size, tuple):
+                target_h, target_w = expected_size
+            else:
+                target_h = target_w = int(expected_size)
+            if x.shape[-2] != target_h or x.shape[-1] != target_w:
+                x = F.interpolate(x, size=(target_h, target_w), mode="bilinear", align_corners=False)
+        features = self.encoder.forward_features(x)
+        pooled = self._pool_features(features)
+        return self.proj(pooled)
 
 
 class ImplicitConditioner(nn.Module):
     def __init__(self, config: ImplicitConditioningConfig):
         super().__init__()
         self.config = config
-        self.encoder = GarmentLatentEncoder(latent_dim=config.latent_dim)
+        self.encoder = (
+            PretrainedGarmentEncoder(config)
+            if config.variant == "v5"
+            else GarmentLatentEncoder(latent_dim=config.latent_dim)
+        )
         if config.variant == "v2":
             self.fusion_head = nn.Linear(config.latent_dim, config.latent_dim)
         elif config.variant in {"v3", "v4"}:
             self.fusion_gate = nn.Sequential(nn.Linear(config.latent_dim, config.latent_dim), nn.Sigmoid())
             self.fusion_bias = nn.Linear(config.latent_dim, config.latent_dim)
+
+    @property
+    def latent_dim(self) -> int:
+        return self.config.anchor_proj_dim if self.config.variant == "v5" else self.config.latent_dim
+
+    @property
+    def source_image_key(self) -> str:
+        return self.config.source_image_key
+
+    @property
+    def target_state_key(self) -> str:
+        return self.config.target_state_key
+
+    def freeze_anchor_encoder(self) -> None:
+        if hasattr(self.encoder, "encoder") and self.config.freeze_anchor_encoder:
+            self.encoder.encoder.requires_grad_(False)
 
     def encode(self, images: Dict[str, torch.Tensor]) -> torch.Tensor:
         latent = self.encoder(images)
@@ -110,6 +174,13 @@ class ImplicitLeRobotPolicyMixin:
         latent = self._extract_latent_tensor(observation)
         garment_latent = latent.squeeze(0).cpu().numpy().astype(np.float32)
         return append_condition_to_state(observation[self.implicit_conditioning.target_state_key], garment_latent)
+
+
+def resolve_implicit_variant(policy_cfg: Any) -> str | None:
+    raw = getattr(policy_cfg, "implicit_conditioning", None) or {}
+    if not raw:
+        return None
+    return raw.get("variant") if isinstance(raw, dict) else getattr(raw, "variant", None)
 
 
 def load_implicit_conditioning_config(policy_cfg) -> ImplicitConditioningConfig:

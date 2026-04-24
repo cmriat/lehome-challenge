@@ -44,6 +44,7 @@ ftservo-python-sdk = "*"
 # === Utilities ===
 num2words = ">=0.5.14"
 transforms3d = ">=0.4.2"
+timm = ">=1.0.26, <2"
 
 [pypi-options]
 index-strategy = "unsafe-best-match"
