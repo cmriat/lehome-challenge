@@ -16,7 +16,7 @@ if [[ -z "${NODE_RANK}" ]]; then
 fi
 MASTER_ADDR="${SLURM_JOB_FIRST_NODE_IP:-${MAIN_PROCESS_IP:-${MASTER_ADDR:-}}}"
 MASTER_PORT="${MAIN_PROCESS_PORT:-${MASTER_PORT:-29500}}"
-CONFIG_PATH="configs/train_pi05_joint.yaml"
+CONFIG_PATH="configs/train_pi05_joint_raw_reject_v3_1k6p9.yaml"
 TRAIN_SCRIPT="scripts/train_pi05_joint.py"
 PROJECT_DIR="/home/jovyan/code/vla/lehome-challenge"
 

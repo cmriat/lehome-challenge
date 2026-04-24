@@ -14,7 +14,6 @@ set -uo pipefail
 
 NUM_GPUS="${1:-8}"
 CONFIG_PATH="configs/train_pi05_joint.yaml"
-TRAIN_SCRIPT="scripts/train_pi05_joint.py"
 PROJECT_DIR="/home/jovyan/code/vla/lehome-challenge"
 
 # ============== Log Configuration ==============
@@ -65,7 +64,7 @@ EXIT_CODE=0
 pixi run accelerate launch \
     --mixed_precision=bf16 \
     --num_processes="$NUM_GPUS" \
-    "$TRAIN_SCRIPT" \
+    lerobot-train \
     --config_path="$PROJECT_DIR/$CONFIG_PATH" \
     || EXIT_CODE=$?
 
