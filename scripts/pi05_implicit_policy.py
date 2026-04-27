@@ -13,7 +13,6 @@ from huggingface_hub.constants import SAFETENSORS_SINGLE_FILE
 from huggingface_hub.errors import HfHubHTTPError
 from safetensors.torch import load_file
 from torch import Tensor, nn
-from torch.nn import Parameter
 
 from lerobot.configs.policies import PreTrainedConfig
 from lerobot.configs.types import FeatureType, NormalizationMode, PolicyFeature
@@ -44,13 +43,8 @@ class PI05ImplicitConfig(PI05Config):
     z_type_dim: int = 4
     weak_coupling: bool = False
     weak_coupling_apply_at_inference: bool = True
-    weak_coupling_gate_bias_init: float = 2.0
+    weak_coupling_gate_bias_init: float = -2.0
     weak_coupling_residual: bool = True
-    action_mod_target: str = "actions"
-    action_mod_mode: str = "gate_bias"
-    action_mod_use_z_type: bool = True
-    action_mod_use_z_task: bool = True
-    action_mod_residual: bool = True
     state_concat_enabled: bool = True
     type_as_instruction: bool = False
 
@@ -79,15 +73,11 @@ class PI05ImplicitConfig(PI05Config):
         if self.weak_coupling and not self.split_latent:
             raise ValueError("weak_coupling requires split_latent=True")
 
-        if self.weak_coupling_gate_bias_init <= 0:
-            raise ValueError("weak_coupling_gate_bias_init must be positive")
+        if not isinstance(self.weak_coupling_gate_bias_init, (int, float)):
+            raise ValueError("weak_coupling_gate_bias_init must be a number")
 
         self.state_concat_enabled = bool(self.state_concat_enabled)
         self.type_as_instruction = bool(self.type_as_instruction)
-        if self.action_mod_target not in {"action", "actions", "__disabled_train_action_mod__"}:
-            raise ValueError("action_mod_target must be 'action', 'actions', or '__disabled_train_action_mod__'")
-        if self.action_mod_mode != "gate_bias":
-            raise ValueError("Only action_mod_mode='gate_bias' is supported")
 
         if self.aux_type_loss_weight < 0:
             raise ValueError("aux_type_loss_weight must be non-negative")
@@ -199,9 +189,6 @@ class PI05ImplicitPolicy(PI05Policy):
             "type_head.",
             "task_gate_head.",
             "task_bias_head.",
-            "action_gate_head.",
-            "action_bias_head.",
-            "action_scale",
         )
         remapped_state_dict = {}
         remap_count = 0
@@ -287,11 +274,6 @@ class PI05ImplicitPolicy(PI05Policy):
         self.weak_coupling_apply_at_inference = config.weak_coupling_apply_at_inference
         self.weak_coupling_gate_bias_init = config.weak_coupling_gate_bias_init
         self.weak_coupling_residual = config.weak_coupling_residual
-        self.action_mod_target = config.action_mod_target
-        self.action_mod_mode = config.action_mod_mode
-        self.action_mod_use_z_type = config.action_mod_use_z_type
-        self.action_mod_use_z_task = config.action_mod_use_z_task
-        self.action_mod_residual = config.action_mod_residual
         self.state_concat_enabled = config.state_concat_enabled
         self.type_as_instruction = config.type_as_instruction
         self._train_step = 0
@@ -300,29 +282,13 @@ class PI05ImplicitPolicy(PI05Policy):
         self.implicit_conditioner.freeze_anchor_encoder()
         latent_dim = self.implicit_conditioner.latent_dim
         type_head_dim = self.z_type_dim if self.split_latent else latent_dim
-        mod_dim = 0
-        if self.action_mod_use_z_type:
-            mod_dim += self.z_type_dim if self.split_latent else latent_dim
-        if self.action_mod_use_z_task:
-            mod_dim += self.z_task_dim if self.split_latent else latent_dim
-        if mod_dim <= 0:
-            mod_dim = latent_dim
-        action_feature = self.config.output_features["action"]
-        action_dim = int(action_feature.shape[0])
         self.type_head = nn.Linear(type_head_dim, config.type_num_classes)
         self.task_gate_head = nn.Linear(self.z_type_dim, self.z_task_dim)
         self.task_bias_head = nn.Linear(self.z_type_dim, self.z_task_dim)
-        self.action_gate_head = nn.Linear(mod_dim, action_dim)
-        self.action_bias_head = nn.Linear(mod_dim, action_dim)
-        self.action_scale = Parameter(torch.tensor(0.1))
         nn.init.zeros_(self.task_gate_head.weight)
         nn.init.constant_(self.task_gate_head.bias, self.weak_coupling_gate_bias_init)
         nn.init.zeros_(self.task_bias_head.weight)
         nn.init.zeros_(self.task_bias_head.bias)
-        nn.init.zeros_(self.action_gate_head.weight)
-        nn.init.zeros_(self.action_gate_head.bias)
-        nn.init.zeros_(self.action_bias_head.weight)
-        nn.init.zeros_(self.action_bias_head.bias)
 
     def _split_latent(self, latent: Tensor) -> tuple[Tensor, Tensor]:
         if not self.split_latent:
@@ -341,32 +307,14 @@ class PI05ImplicitPolicy(PI05Policy):
         alpha = (progress - self.aux_type_warmup_start_ratio) / max(span, 1e-8)
         return self.aux_type_loss_weight * alpha
 
-    def _build_action_mod_signal(self, z_task: Tensor, z_type: Tensor) -> Tensor:
-        parts: list[Tensor] = []
-        if self.action_mod_use_z_type:
-            parts.append(z_type)
-        if self.action_mod_use_z_task:
-            parts.append(z_task)
-        if not parts:
-            parts.append(z_type)
-        return torch.cat(parts, dim=-1) if len(parts) > 1 else parts[0]
-
-    def _modulate_action_tensor(self, tensor: Tensor, mod_signal: Tensor) -> Tensor:
-        gate = torch.sigmoid(self.action_gate_head(mod_signal)).unsqueeze(1)
-        bias = self.action_bias_head(mod_signal).unsqueeze(1)
-        scaled = self.action_scale.to(dtype=tensor.dtype, device=tensor.device)
-        modulated = tensor * (1.0 + scaled * (gate - 0.5) * 2.0) + scaled * bias
-        return tensor + modulated if self.action_mod_residual else modulated
-
     def _apply_implicit_conditioning(
         self,
         batch: dict[str, Tensor],
         *,
         apply_weak_coupling: bool,
-        apply_action_modulation: bool,
-    ) -> tuple[dict[str, Tensor], Tensor | None, Tensor | None, Tensor | None]:
+    ) -> tuple[dict[str, Tensor], Tensor | None]:
         if not self.implicit_conditioning.enabled:
-            return batch, None, None, None
+            return batch, None
         source_key = self.implicit_conditioner.source_image_key
         target_key = self.implicit_conditioner.target_state_key
         if source_key not in batch or target_key not in batch:
@@ -384,15 +332,9 @@ class PI05ImplicitPolicy(PI05Policy):
         conditioned = dict(batch)
         if self.state_concat_enabled:
             conditioned[target_key] = torch.cat([batch[target_key], z_task], dim=-1)
-        if apply_action_modulation and self.action_mod_target in conditioned:
-            mod_signal = self._build_action_mod_signal(z_task, z_type)
-            conditioned[self.action_mod_target] = self._modulate_action_tensor(conditioned[self.action_mod_target], mod_signal)
-        else:
-            mod_signal = self._build_action_mod_signal(z_task, z_type)
         conditioned["_implicit_z_type"] = z_type
         conditioned["_implicit_z_task"] = z_task
-        conditioned["_implicit_instruction"] = z_type if self.type_as_instruction else mod_signal
-        return conditioned, z_type, z_task, mod_signal
+        return conditioned, z_type
 
     def _type_metrics(self, z_type: Tensor, batch: dict[str, Tensor], policy_loss: Tensor, loss_dict: dict) -> tuple[Tensor, dict]:
         if z_type is None or self.type_target_key not in batch or self.aux_type_loss_weight <= 0:
@@ -412,38 +354,26 @@ class PI05ImplicitPolicy(PI05Policy):
         loss_dict["type_acc"] = float((logits.argmax(dim=-1) == target_prob.argmax(dim=-1)).float().mean().cpu())
         return total_loss, loss_dict
 
-    def _forward_with_action_modulation(self, conditioned: dict[str, Tensor], reduction: str) -> tuple[Tensor, dict]:
-        return super().forward(conditioned, reduction=reduction)
-
     def select_action(self, batch: dict[str, Tensor], **kwargs) -> Tensor:
-        conditioned, _, _, _ = self._apply_implicit_conditioning(
+        conditioned, _ = self._apply_implicit_conditioning(
             batch,
             apply_weak_coupling=self.weak_coupling_apply_at_inference,
-            apply_action_modulation=False,
         )
         return super().select_action(conditioned, **kwargs)
 
     def predict_action_chunk(self, batch: dict[str, Tensor], **kwargs) -> Tensor:
-        conditioned, _, _, _ = self._apply_implicit_conditioning(
+        conditioned, _ = self._apply_implicit_conditioning(
             batch,
             apply_weak_coupling=self.weak_coupling_apply_at_inference,
-            apply_action_modulation=False,
         )
-        pred = super().predict_action_chunk(conditioned, **kwargs)
-        z_task = conditioned.get("_implicit_z_task")
-        z_type = conditioned.get("_implicit_z_type")
-        if z_task is None or z_type is None:
-            return pred
-        mod_signal = self._build_action_mod_signal(z_task, z_type)
-        return self._modulate_action_tensor(pred, mod_signal)
+        return super().predict_action_chunk(conditioned, **kwargs)
 
     def forward(self, batch: dict[str, Tensor], reduction: str = "mean") -> tuple[Tensor, dict]:
-        conditioned, z_type, _, _ = self._apply_implicit_conditioning(
+        conditioned, z_type = self._apply_implicit_conditioning(
             batch,
             apply_weak_coupling=True,
-            apply_action_modulation=True,
         )
-        policy_loss, loss_dict = self._forward_with_action_modulation(conditioned, reduction=reduction)
+        policy_loss, loss_dict = super().forward(conditioned, reduction=reduction)
         total_loss, loss_dict = self._type_metrics(z_type, batch, policy_loss, loss_dict)
         self._train_step += 1
         return total_loss, loss_dict

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Literal
 
 import numpy as np
@@ -28,12 +28,74 @@ class ImplicitConditioningConfig:
     source_image_key: str = "observation.images.top_rgb"
     target_state_key: str = "observation.state"
     anchor_encoder_name_or_path: str = "vit_base_patch14_dinov2.lvd142m"
-    anchor_pooling: Literal["cls", "mean"] = "mean"
+    anchor_pooling: Literal["cls", "mean", "attn"] = "attn"
+    anchor_attn_num_queries: int = 4
+    anchor_attn_num_heads: int = 8
     anchor_feat_dim: int = 768
     anchor_proj_dim: int = DEFAULT_LATENT_DIM
+    anchor_proj_hidden_dims: list = field(default_factory=lambda: [256, 64])
     freeze_anchor_encoder: bool = True
+    lora_enabled: bool = False
+    lora_rank: int = 8
+    lora_alpha: float = 16.0
+    lora_target_blocks: int = 4
     type_as_instruction: bool = False
     state_concat_enabled: bool = True
+
+
+class AttentionPool(nn.Module):
+    """Learnable cross-attention pooling over patch tokens.
+
+    Replaces mean pooling with a set of learnable query vectors that attend
+    to patch features, letting the model learn which spatial regions matter.
+    """
+
+    def __init__(self, dim: int, num_queries: int = 4, num_heads: int = 8):
+        super().__init__()
+        self.num_queries = num_queries
+        self.queries = nn.Parameter(torch.randn(1, num_queries, dim) * 0.02)
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=dim, num_heads=num_heads, batch_first=True
+        )
+
+    def forward(self, patch_tokens: torch.Tensor) -> torch.Tensor:
+        B = patch_tokens.shape[0]
+        q = self.queries.expand(B, -1, -1)
+        out, _ = self.cross_attn(q, patch_tokens, patch_tokens)
+        return out.flatten(1)
+
+
+class LoRALinear(nn.Module):
+    """Low-rank adaptation wrapper for nn.Linear."""
+
+    def __init__(self, linear: nn.Linear, rank: int = 8, alpha: float = 16.0):
+        super().__init__()
+        self.linear = linear
+        self.rank = rank
+        self.scale = alpha / rank if rank > 0 else 1.0
+        in_features, out_features = linear.in_features, linear.out_features
+        self.lora_A = nn.Parameter(torch.zeros(in_features, rank))
+        self.lora_B = nn.Parameter(torch.zeros(rank, out_features))
+        nn.init.kaiming_uniform_(self.lora_A, a=np.sqrt(5))
+        nn.init.zeros_(self.lora_B)
+        if rank <= 0:
+            self.lora_A.requires_grad_(False)
+            self.lora_B.requires_grad_(False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        delta = (x @ self.lora_A) @ self.lora_B * self.scale
+        return self.linear(x) + delta
+
+
+def _apply_lora_to_blocks(encoder, num_blocks: int, rank: int, alpha: float):
+    """Inject LoRA into the last `num_blocks` transformer blocks of a ViT."""
+    if rank <= 0 or num_blocks <= 0:
+        return
+    blocks = encoder.blocks
+    target_blocks = blocks[-num_blocks:] if num_blocks < len(blocks) else blocks
+    for block in target_blocks:
+        attn = block.attn
+        attn.qkv = LoRALinear(attn.qkv, rank=rank, alpha=alpha)
 
 
 class GarmentLatentEncoder(nn.Module):
@@ -41,14 +103,20 @@ class GarmentLatentEncoder(nn.Module):
         super().__init__()
         self.backbone = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=5, stride=2, padding=2),
+            nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
             nn.AdaptiveAvgPool2d((1, 1)),
         )
-        self.proj = nn.Linear(128, latent_dim)
+        self.proj = nn.Sequential(
+            nn.Linear(128, latent_dim),
+            nn.LayerNorm(latent_dim),
+        )
 
     def forward(self, images: Dict[str, torch.Tensor]) -> torch.Tensor:
         top_key = "observation.images.top_rgb"
@@ -63,6 +131,12 @@ class GarmentLatentEncoder(nn.Module):
 
 
 class PretrainedGarmentEncoder(nn.Module):
+    """Pretrained visual encoder with learnable attention pooling and MLP projection.
+
+    Uses a frozen (or LoRA-tuned) pretrained ViT backbone, then pools patch tokens
+    via cross-attention with learnable queries, and projects via MLP to the latent space.
+    """
+
     def __init__(self, config: ImplicitConditioningConfig):
         super().__init__()
         self.config = config
@@ -74,16 +148,47 @@ class PretrainedGarmentEncoder(nn.Module):
         )
         if config.freeze_anchor_encoder:
             self.encoder.requires_grad_(False)
-        self.proj = nn.Linear(config.anchor_feat_dim, config.anchor_proj_dim)
+        if config.lora_enabled:
+            _apply_lora_to_blocks(
+                self.encoder, config.lora_target_blocks, config.lora_rank, config.lora_alpha
+            )
+
+        if config.anchor_pooling == "attn":
+            self.attn_pool = AttentionPool(
+                dim=config.anchor_feat_dim,
+                num_queries=config.anchor_attn_num_queries,
+                num_heads=config.anchor_attn_num_heads,
+            )
+            pooled_dim = config.anchor_attn_num_queries * config.anchor_feat_dim
+        else:
+            self.attn_pool = None
+            pooled_dim = config.anchor_feat_dim
+
+        hidden = config.anchor_proj_hidden_dims
+        dims = [pooled_dim] + list(hidden) + [config.anchor_proj_dim]
+        layers = []
+        for i in range(len(dims) - 1):
+            layers.append(nn.Linear(dims[i], dims[i + 1]))
+            if i < len(dims) - 2:
+                layers.append(nn.LayerNorm(dims[i + 1]))
+                layers.append(nn.GELU())
+        self.proj = nn.Sequential(*layers)
 
     def _pool_features(self, features: torch.Tensor) -> torch.Tensor:
         if features.ndim == 4:
             features = features.flatten(2).transpose(1, 2)
-        if features.ndim == 3:
-            return features[:, 0] if self.config.anchor_pooling == "cls" else features.mean(dim=1)
         if features.ndim == 2:
             return features
-        raise ValueError(f"Unsupported pretrained feature shape: {tuple(features.shape)}")
+        if features.ndim != 3:
+            raise ValueError(f"Unsupported feature shape: {tuple(features.shape)}")
+
+        if self.attn_pool is not None:
+            patch_tokens = features[:, 1:] if features.shape[1] > self.encoder.num_prefix_tokens else features
+            return self.attn_pool(patch_tokens)
+
+        if self.config.anchor_pooling == "cls":
+            return features[:, 0]
+        return features.mean(dim=1)
 
     def forward(self, images: Dict[str, torch.Tensor]) -> torch.Tensor:
         top_key = self.config.source_image_key

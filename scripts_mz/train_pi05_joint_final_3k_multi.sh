@@ -1,6 +1,6 @@
 #!/bin/zsh
-# Pi0.5 Implicit V5 Multi-node Training Script for LeHome Challenge
-# Usage: pixi run submit-multi implicit_v5 2 scripts_mz/train_pi05_implicit_v5_multi.sh [NUM_GPUS_PER_NODE]
+# Pi0.5 Joint Final_3K Multi-node Training (2×8 H20 140G)
+# Usage: pixi run submit-multi joint_final_3k 2 scripts_mz/train_pi05_joint_final_3k_multi.sh [NUM_GPUS_PER_NODE]
 
 set -uo pipefail
 
@@ -16,8 +16,8 @@ if [[ -z "${NODE_RANK}" ]]; then
 fi
 MASTER_ADDR="${SLURM_JOB_FIRST_NODE_IP:-${MAIN_PROCESS_IP:-${MASTER_ADDR:-}}}"
 MASTER_PORT="${MAIN_PROCESS_PORT:-${MASTER_PORT:-29500}}"
-CONFIG_PATH="configs/train_pi05_implicit_v5.yaml"
-TRAIN_SCRIPT="scripts/train_pi05_implicit_v5.py"
+CONFIG_PATH="configs/train_pi05_joint_final_3k.yaml"
+TRAIN_SCRIPT="scripts/train_pi05_joint_optimized.py"
 PROJECT_DIR="/home/jovyan/code/vla/lehome-challenge"
 
 if [[ -z "$MASTER_ADDR" ]]; then
@@ -27,31 +27,46 @@ fi
 
 LOG_DIR="${PROJECT_DIR}/logs"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-LOG_FILE="${LOG_DIR}/train_pi05_implicit_v5_multi_node${NODE_RANK}_${TIMESTAMP}.log"
+LOG_FILE="${LOG_DIR}/train_joint_final_3k_node${NODE_RANK}_${TIMESTAMP}.log"
 mkdir -p "$LOG_DIR"
 
 exec > >(stdbuf -oL -eL tee -a "$LOG_FILE") 2>&1
 
 echo "=============================================="
-echo "Pi0.5 Implicit V5 Multi-node Training: LeHome Challenge"
+echo "Pi0.5 Joint Final_3K Multi-node: LeHome Challenge"
 echo "Job started at: $(date)"
-echo "Node log file: $LOG_FILE"
+echo "Node log: $LOG_FILE"
 echo "Config: $CONFIG_PATH"
 echo "Train script: $TRAIN_SCRIPT"
-echo "Nodes: $NNODES | GPUs per node: $NUM_GPUS | Total GPUs: $((NNODES * NUM_GPUS))"
+echo "Nodes: $NNODES | GPUs/node: $NUM_GPUS | Total: $((NNODES * NUM_GPUS))"
 echo "Node rank: $NODE_RANK | Master: $MASTER_ADDR:$MASTER_PORT"
 echo "=============================================="
 
+# --- HF offline: compute nodes have no internet ---
+export HF_HUB_OFFLINE=1
+
+# --- GPU compute ---
 export CUDA_LAUNCH_BLOCKING=0
 export TORCH_MULTIPROCESSING_START_METHOD=spawn
-export NCCL_SOCKET_IFNAME="eth0"
-export NCCL_IB_GID_INDEX="3"
-export NCCL_IB_QPS_PER_CONNECTION="2"
-export NCCL_IB_TIME_OUT="22"
 export CONDA_OVERRIDE_CUDA=12.9
 export PYTORCH_ALLOC_CONF=expandable_segments:True
 export PYTHONUNBUFFERED=1
 export ACCELERATE_LOG_LEVEL="info"
+
+# --- NCCL: H20 × 2 nodes (RoCE/IB) ---
+export NCCL_SOCKET_IFNAME="${NCCL_SOCKET_IFNAME:-eth0}"
+export NCCL_IB_GID_INDEX="${NCCL_IB_GID_INDEX:-3}"
+export NCCL_IB_QPS_PER_CONNECTION="${NCCL_IB_QPS_PER_CONNECTION:-2}"
+export NCCL_IB_TIME_OUT="${NCCL_IB_TIME_OUT:-22}"
+export NCCL_NSOCKS_PERTHREAD="${NCCL_NSOCKS_PERTHREAD:-4}"
+export NCCL_SOCKET_NTHREADS="${NCCL_SOCKET_NTHREADS:-2}"
+export NCCL_BUFFSIZE="${NCCL_BUFFSIZE:-4194304}"           # 4MiB
+export NCCL_IB_HCA="${NCCL_IB_HCA:-mlx5}"                  # Mellanox RDMA
+
+# --- torch.compile cache ---
+export TORCHINDUCTOR_CACHE_DIR="${PROJECT_DIR}/.torchinductor_cache"
+mkdir -p "$TORCHINDUCTOR_CACHE_DIR"
+
 export MASTER_ADDR
 export MASTER_PORT
 export NODE_RANK
